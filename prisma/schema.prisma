@@ -1,0 +1,33 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model GuestRegistration {
+  id           Int       @id @default(autoincrement())
+  fullName     String
+  email        String
+  phone        String
+  cpf          String
+  macAddress   String
+  apMac        String?
+  ssid         String?
+  site         String?
+  userAgent    String?
+  ipAddress    String?
+  authorizedAt DateTime  @default(now())
+  durationMin  Int
+  downKbps     Int?
+  upKbps       Int?
+  bytesTx      BigInt?
+  bytesRx      BigInt?
+  lastSeenAt   DateTime?
+
+  @@index([cpf])
+  @@index([macAddress])
+  @@index([authorizedAt])
+}

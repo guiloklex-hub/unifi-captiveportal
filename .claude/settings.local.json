@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Read(//usr/local/bin/**)",
+      "Read(//home/gspaiva/.nvm/versions/**)",
+      "Read(//home/gspaiva/.local/share/**)",
+      "Read(//etc/**)",
+      "Read(//home/gspaiva/.nvm/**)",
+      "Read(//home/gspaiva/**)",
+      "Bash(sudo -n true)",
+      "Bash(curl -s -X POST http://localhost:80/api/admin/login -H 'content-type: application/json' -d '{\"password\":\"Tabajara@2026\"}' -v)"
+    ]
+  }
+}
