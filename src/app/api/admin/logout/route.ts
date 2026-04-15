@@ -1,12 +1,18 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ADMIN_COOKIE } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function POST() {
-  const res = NextResponse.redirect(
-    new URL("/admin/login", process.env.NEXT_PUBLIC_BASE_URL ?? "http://localhost:3000"),
-  );
+export async function GET(req: NextRequest) {
+  return logout(req);
+}
+
+export async function POST(req: NextRequest) {
+  return logout(req);
+}
+
+async function logout(req: NextRequest) {
+  const res = NextResponse.redirect(new URL("/admin/login", req.url));
   res.cookies.delete(ADMIN_COOKIE);
   return res;
 }

@@ -1,10 +1,10 @@
 "use client";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
 function LoginForm() {
   const router = useRouter();
@@ -12,6 +12,13 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [settings, setSettings] = useState<any>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/settings")
+      .then((res) => res.json())
+      .then((data) => setSettings(data));
+  }, []);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -27,15 +34,25 @@ function LoginForm() {
       setError("Senha incorreta");
       return;
     }
-    router.push(next);
-    router.refresh();
+    window.location.href = next;
   };
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-50 p-4">
       <Card className="w-full max-w-sm shadow-xl">
-        <CardHeader>
-          <CardTitle>Painel Administrativo</CardTitle>
+        <CardHeader className="text-center">
+          {settings?.logoUrl && (
+            <div className="mb-4 flex justify-center">
+              <img 
+                src={settings.logoUrl} 
+                alt={settings.brandName} 
+                className="max-h-12 object-contain"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          )}
+          <CardTitle>{settings?.brandName || "Painel Administrativo"}</CardTitle>
+          <CardDescription>Acesso restrito</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={submit}>
@@ -50,7 +67,7 @@ function LoginForm() {
               />
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button type="submit" className="w-full bg-primary text-primary-foreground" disabled={loading}>
               {loading ? "Entrando..." : "Entrar"}
             </Button>
           </form>

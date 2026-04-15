@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { TermsModal } from "./TermsModal";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -20,7 +21,7 @@ import {
 } from "@/lib/validators";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
 
-export function PortalForm() {
+export function PortalForm({ settings }: { settings: any }) {
   const router = useRouter();
   const params = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -94,7 +95,19 @@ export function PortalForm() {
   return (
     <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="text-center">
-        <CardTitle className="text-2xl">Bem-vindo(a)!</CardTitle>
+        {settings?.logoUrl && (
+          <div className="mb-4 flex justify-center">
+            <img 
+              key={settings.logoUrl}
+              src={settings.logoUrl} 
+              alt={settings.brandName || "Logo"} 
+              className="max-h-12 object-contain"
+              referrerPolicy="no-referrer"
+              crossOrigin="anonymous"
+            />
+          </div>
+        )}
+        <CardTitle className="text-2xl">{settings.brandName}</CardTitle>
         <CardDescription>Preencha seus dados para acessar o Wi-Fi gratuito.</CardDescription>
       </CardHeader>
       <CardContent>
@@ -143,7 +156,7 @@ export function PortalForm() {
               {...register("acceptTerms")}
             />
             <span>
-              Aceito os termos de uso e o tratamento dos meus dados conforme a LGPD.
+              Aceito os <TermsModal terms={settings.termsOfUse} /> e a política de tratamento de dados.
             </span>
           </label>
           {errors.acceptTerms && (
@@ -156,7 +169,7 @@ export function PortalForm() {
             </div>
           )}
 
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
+          <Button type="submit" className="w-full bg-primary text-primary-foreground" disabled={isSubmitting}>
             {isSubmitting ? "Conectando..." : "Conectar"}
           </Button>
         </form>

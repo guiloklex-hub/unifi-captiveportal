@@ -31,3 +31,12 @@ model GuestRegistration {
   @@index([macAddress])
   @@index([authorizedAt])
 }
+model SystemSettings {
+  id            String   @id @default("config")
+  brandName     String   @default("UniFi Portal")
+  logoUrl       String?
+  backgroundUrl String?
+  primaryColor  String   @default("#171717")
+  termsOfUse    String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
+  updatedAt     DateTime @updatedAt
+}

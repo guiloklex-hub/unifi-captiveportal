@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { LayoutDashboard, ListOrdered, Wifi, LogOut } from "lucide-react";
+import { LayoutDashboard, ListOrdered, Wifi, LogOut, Palette } from "lucide-react";
 
 const navItems = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/logs", label: "Logs", icon: ListOrdered },
   { href: "/admin/sessions", label: "Sessões", icon: Wifi },
+  { href: "/admin/settings", label: "Customização", icon: Palette },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
