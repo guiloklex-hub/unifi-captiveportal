@@ -20,6 +20,17 @@ CREATE TABLE "GuestRegistration" (
     "lastSeenAt" DATETIME
 );
 
+-- CreateTable
+CREATE TABLE "SystemSettings" (
+    "id" TEXT NOT NULL PRIMARY KEY DEFAULT 'config',
+    "brandName" TEXT NOT NULL DEFAULT 'UniFi Portal',
+    "logoUrl" TEXT,
+    "backgroundUrl" TEXT,
+    "primaryColor" TEXT NOT NULL DEFAULT '#171717',
+    "termsOfUse" TEXT NOT NULL DEFAULT 'Ao conectar, você aceita os termos de uso e a política de privacidade.',
+    "updatedAt" DATETIME NOT NULL
+);
+
 -- CreateIndex
 CREATE INDEX "GuestRegistration_cpf_idx" ON "GuestRegistration"("cpf");
 
