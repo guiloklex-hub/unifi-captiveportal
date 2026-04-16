@@ -5,7 +5,9 @@ out
 .env.local
 prisma/*.db
 prisma/*.db-journal
-prisma/prisma/*.db
-prisma/prisma/*.db-journal
 *.log
 .DS_Store
+
+# User uploads
+public/uploads/*
+!public/uploads/.gitkeep

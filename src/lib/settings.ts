@@ -18,16 +18,11 @@ const DEFAULT_SETTINGS: SystemSettings = {
 
 export async function getSystemSettings(): Promise<SystemSettings> {
   try {
-    const settings = await prisma.systemSettings.findFirst({
+    const settings = await prisma.systemSettings.upsert({
       where: { id: "config" },
+      update: {},
+      create: { id: "config", ...DEFAULT_SETTINGS },
     });
-    
-    if (!settings) {
-      // Cria o registro inicial se não existir
-      return await prisma.systemSettings.create({
-        data: { id: "config", ...DEFAULT_SETTINGS },
-      });
-    }
     
     return settings as SystemSettings;
   } catch (error) {

@@ -5,6 +5,7 @@ import { toCSV } from "@/lib/csv";
 import { jsonSafe, } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;

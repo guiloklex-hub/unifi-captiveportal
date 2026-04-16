@@ -190,7 +190,7 @@ Todas as variáveis ficam no arquivo `.env` na raiz do projeto.
 
 | Variável | Obrigatório | Descrição | Exemplo |
 |---|---|---|---|
-| `DATABASE_URL` | Sim | Caminho do banco SQLite | `file:./prisma/dev.db` |
+| `DATABASE_URL` | Sim | Caminho do banco SQLite | `file:./dev.db` |
 | `UNIFI_URL` | Sim | URL completa da controladora | `https://192.168.1.1:8443` |
 | `UNIFI_USERNAME` | Sim | Usuário admin local da UniFi | `portal-api` |
 | `UNIFI_PASSWORD` | Sim | Senha do usuário UniFi | `SenhaForte123` |

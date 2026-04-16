@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/utils";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
