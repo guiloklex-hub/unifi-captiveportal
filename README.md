@@ -110,8 +110,8 @@ pm2 --version
 ## 2. Clonar e configurar o projeto
 
 ```bash
-git clone <URL_DO_REPOSITORIO>
-cd unifi-captive-portal
+git clone https://github.com/guiloklex-hub/unifi-captiveportal
+cd unifi-captiveportal
 ```
 
 ### 2.1 Criar o arquivo de variáveis de ambiente
@@ -202,7 +202,7 @@ Caso você já tenha o sistema rodando e queira baixar as últimas melhorias sem
 
 ```bash
 # 1. Acesse a pasta do projeto
-cd unifi-captive-portal
+cd unifi-captiveportal
 
 # 2. Puxe as atualizações do GitHub
 git pull origin main
@@ -230,9 +230,9 @@ pm2 delete unifi-portal
 
 # 2. Remova a pasta e clone novamente
 cd ..
-rm -rf unifi-captive-portal
-git clone <URL_DO_REPOSITORIO>
-cd unifi-captive-portal
+rm -rf unifi-captiveportal
+git clone https://github.com/guiloklex-hub/unifi-captiveportal
+cd unifi-captiveportal
 
 # 3. Siga o Guia de Instalação (seção 2 e 3)
 ```
