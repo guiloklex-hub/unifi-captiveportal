@@ -24,26 +24,39 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 
 ## 1. Instalação do ambiente
 
-### 1.1 Instalar o NVM (Node Version Manager)
+### 1.1 Preparação do Sistema Operacional (Debian Puro / Ubuntu)
+
+Em um servidor recém-criado (Debian/Ubuntu puro), acesse como usuário `root` (ou usando `sudo`) e prepare os pacotes fundamentais que geralmente não vêm instalados:
+
+```bash
+apt update && apt upgrade -y
+apt install -y sudo curl git build-essential libcap2-bin
+```
+
+*(Nota: o `libcap2-bin` nos dará a ferramenta para liberar a porta 80, o `git` clonará o projeto e o `curl` baixará o Node).*
+
+### 1.2 Instalar o NVM (Node Version Manager)
+
+O NVM facilita a instalação e a troca de versões do Node.js.
 
 ```bash
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
 ```
 
-Feche e reabra o terminal (ou carregue o nvm na sessão atual):
+Carregue as variáveis de ambiente do NVM na sessão atual do seu terminal:
 
 ```bash
 export NVM_DIR="$HOME/.nvm"
 source "$NVM_DIR/nvm.sh"
 ```
 
-Verifique:
+Verifique se foi instalado com sucesso:
 
 ```bash
 nvm --version
 ```
 
-### 1.2 Instalar o Node.js
+### 1.3 Instalar o Node.js (Versão 24.x)
 
 ```bash
 nvm install 24
@@ -51,30 +64,32 @@ nvm use 24
 nvm alias default 24
 ```
 
-Verifique:
+Cheque as versões do Node e do NPM instaladas:
 
 ```bash
-node --version   # v24.x.x
-npm --version    # 11.x.x
+node --version   # deve exibir v24.x.x
+npm --version    # deve exibir 11.x.x ou superior
 ```
 
-### 1.3 Permitir que o Node escute na porta 80 sem root
+### 1.4 Permitir que o Node escute na porta 80 sem root
 
-Portas abaixo de 1024 exigem privilégio no Linux. Em vez de rodar como root, conceda a capability diretamente ao binário do Node:
+Portas abaixo de 1024 exigem privilégio no Linux. Em vez de rodar toda a aplicação como Administrador, é muito mais seguro conceder a permissão exclusiva para a porta HTTP ao Node, usando o pacote `libcap2-bin` que baixamos no primeiro passo:
 
 ```bash
 sudo setcap 'cap_net_bind_service=+ep' $(which node)
 ```
 
-> Repita este comando sempre que atualizar a versão do Node via nvm.
+> **Importante:** Repita este comando sempre que você atualizar a versão do Node no futuro.
 
-### 1.4 Instalar o PM2 globalmente
+### 1.5 Instalar o PM2 globalmente
+
+O PM2 vai atuar como o "motor" que manterá a aplicação sempre ativa, permitindo inicialização automática e visualização de logs.
 
 ```bash
 npm install -g pm2
 ```
 
-Verifique:
+Verifique a instalação:
 
 ```bash
 pm2 --version
