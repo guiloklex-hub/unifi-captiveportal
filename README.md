@@ -2,6 +2,16 @@
 
 Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti UniFi v10.1.89**, com painel administrativo, relatórios de BI e **customização total de branding**.
 
+---
+
+### ✨ Atualizações Recentes (Abril 2026)
+
+- **UX Mobile-First**: Otimização completa dos formulários para evitar zoom no iOS, touch targets maiores e layouts que respeitam áreas seguras (Notch/CNA).
+- **Redirecionamento Dinâmico**: O sistema agora detecta automaticamente o Host (IP ou domínio) de acesso, evitando erros de redirecionamento para `localhost`.
+- **Deduplicação de Sessões**: Melhoria na lógica de exibição de visitantes ativos e mapeamento de registros do banco de dados.
+
+---
+
 ## Stack
 
 - **Next.js 15** (App Router) + TypeScript
@@ -184,7 +194,52 @@ pm2 delete unifi-portal        # remover da lista do PM2
 
 ---
 
-## 4. Variáveis de ambiente
+## 4. Atualização e Manutenção
+
+### 4.1 Como aplicar atualizações (git pull)
+
+Caso você já tenha o sistema rodando e queira baixar as últimas melhorias sem perder seus dados ( registros no SQLite e uploads locais):
+
+```bash
+# 1. Acesse a pasta do projeto
+cd unifi-captive-portal
+
+# 2. Puxe as atualizações do GitHub
+git pull origin main
+
+# 3. Instale novas dependências (se houver)
+npm install
+
+# 4. Sincronize o banco de dados (IMPORTANTE)
+npx prisma migrate deploy
+
+# 5. Gere o novo build de produção
+npm run build
+
+# 6. Recarregue o PM2 (zero downtime)
+pm2 reload unifi-portal
+```
+
+### 4.2 Instalação Limpa (Reset total)
+
+Caso queira remover tudo e começar do zero (Atenção: isso apagará seus cadastros e imagens):
+
+```bash
+# 1. Pare o processo atual
+pm2 delete unifi-portal
+
+# 2. Remova a pasta e clone novamente
+cd ..
+rm -rf unifi-captive-portal
+git clone <URL_DO_REPOSITORIO>
+cd unifi-captive-portal
+
+# 3. Siga o Guia de Instalação (seção 2 e 3)
+```
+
+---
+
+## 5. Variáveis de ambiente
 
 Todas as variáveis ficam no arquivo `.env` na raiz do projeto.
 
@@ -220,7 +275,7 @@ ADMIN_SECRET="cole_aqui_o_valor_gerado"
 
 ---
 
-## 5. Configurando a controladora UniFi
+## 6. Configurando a controladora UniFi
 
 ### 5.1 Criar usuário dedicado para a API
 
@@ -268,7 +323,7 @@ Em **Pre-Authorization Access**, adicione o IP e porta do servidor desta aplica�
 
 ---
 
-## 6. Customização e Branding
+## 7. Customização e Branding
 
 O sistema permite a personalização completa da identidade visual via Painel Administrativo:
 
@@ -282,7 +337,7 @@ Para configurar, acesse **Painel Admin > Customização**.
 
 ---
 
-## 7. Acessando o sistema
+## 8. Acessando o sistema
 
 | Interface | URL |
 |---|---|
@@ -293,7 +348,7 @@ A senha do painel admin é a definida em `ADMIN_PASSWORD`.
 
 ---
 
-## 8. Estrutura do projeto
+## 9. Estrutura do projeto
 
 ```
 unifi-captive-portal/
@@ -317,7 +372,7 @@ unifi-captive-portal/
 
 ---
 
-## 9. Endpoints da API UniFi utilizados
+## 10. Endpoints da API UniFi utilizados
 
 | Endpoint | Método | Descrição |
 |---|---|---|
@@ -327,7 +382,7 @@ unifi-captive-portal/
 
 ---
 
-## 10. Banco de dados
+## 11. Banco de dados
 
 O SQLite é criado automaticamente em `prisma/dev.db` na primeira migração.
 
@@ -339,7 +394,7 @@ npx prisma studio
 
 ---
 
-## 11. Solução de problemas
+## 12. Solução de problemas
 
 | Sintoma | Causa | Solução |
 |---|---|---|
@@ -349,7 +404,7 @@ npx prisma studio
 
 ---
 
-## 12. LGPD e Segurança
+## 13. LGPD e Segurança
 
 O sistema foi projetado para conformidade com a LGPD:
 
