@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Image from "next/image";
 import { TermsModal } from "./TermsModal";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -93,17 +95,17 @@ export function PortalForm({ settings }: { settings: any }) {
   }
 
   return (
-    <Card className="w-full max-w-md shadow-xl">
+    <Card className="w-full max-w-md shadow-xl max-h-full overflow-y-auto">
       <CardHeader className="text-center">
         {settings?.logoUrl && (
-          <div className="mb-4 flex justify-center">
-            <img 
-              key={settings.logoUrl}
+          <div className="mb-4 flex justify-center relative h-16 w-full mx-auto">
+            <Image 
               src={settings.logoUrl} 
-              alt={settings.brandName || "Logo"} 
-              className="max-h-12 object-contain"
-              referrerPolicy="no-referrer"
-              crossOrigin="anonymous"
+              alt={settings.brandName || "Logo"}
+              fill
+              className="object-contain"
+              priority
+              sizes="(max-width: 768px) 100vw, 20vw"
             />
           </div>
         )}
@@ -149,13 +151,13 @@ export function PortalForm({ settings }: { settings: any }) {
             />
           </Field>
 
-          <label className="flex items-start gap-2 text-sm text-muted-foreground">
+          <label className="flex items-start gap-3 p-2 -ml-2 rounded-lg hover:bg-slate-50 cursor-pointer min-h-[44px]">
             <input
               type="checkbox"
-              className="mt-1"
+              className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
               {...register("acceptTerms")}
             />
-            <span>
+            <span className="text-sm text-slate-600 leading-snug">
               Aceito os <TermsModal terms={settings.termsOfUse} /> e a política de tratamento de dados.
             </span>
           </label>
@@ -169,8 +171,17 @@ export function PortalForm({ settings }: { settings: any }) {
             </div>
           )}
 
-          <Button type="submit" className="w-full bg-primary text-primary-foreground" disabled={isSubmitting}>
-            {isSubmitting ? "Conectando..." : "Conectar"}
+          <Button 
+            type="submit" 
+            className="w-full bg-primary text-primary-foreground h-12 text-base transition-all disabled:opacity-75 disabled:cursor-not-allowed" 
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                Conectando...
+              </>
+            ) : "Conectar ao Wi-Fi"}
           </Button>
         </form>
       </CardContent>

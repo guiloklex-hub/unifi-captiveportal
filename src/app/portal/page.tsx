@@ -13,7 +13,7 @@ export default async function PortalPage() {
 
   return (
     <main 
-      className="flex min-h-screen items-center justify-center bg-slate-50 p-4"
+      className="flex h-[100dvh] min-h-screen items-center justify-center bg-slate-50 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
       style={bgStyle}
     >
       <div className={settings.backgroundUrl ? "absolute inset-0 bg-black/30 backdrop-blur-sm" : ""} />

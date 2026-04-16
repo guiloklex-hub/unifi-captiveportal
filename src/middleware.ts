@@ -8,10 +8,10 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const valid = await verifySessionToken(token);
   if (!valid) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/admin/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    const host = req.headers.get("host") || req.nextUrl.host;
+    const protocol = req.headers.get("x-forwarded-proto") || req.nextUrl.protocol.split(":")[0];
+    const loginUrl = `${protocol}://${host}/admin/login?next=${encodeURIComponent(pathname)}`;
+    return NextResponse.redirect(loginUrl);
   }
   return NextResponse.next();
 }

@@ -29,7 +29,17 @@ export default async function SessionsPage() {
   let guests: Awaited<ReturnType<typeof listActiveGuests>> = [];
   let error: string | null = null;
   try {
-    guests = await listActiveGuests();
+    const allGuests = await listActiveGuests();
+    // Filtra para exibir apenas quem está efetivamente autorizado no momento
+    // E garante unicidade por MAC para evitar glitches de chaves duplicadas na tabela
+    const seen = new Set<string>();
+    guests = allGuests.filter((g) => {
+      const mac = g.mac.toLowerCase();
+      // Apenas exibe se estiver explicitamente autorizado e se for o primeiro registro desse MAC
+      if (g.authorized !== true || seen.has(mac)) return false;
+      seen.add(mac);
+      return true;
+    });
   } catch (err) {
     error = err instanceof Error ? err.message : "Erro ao consultar UniFi";
   }
@@ -39,7 +49,16 @@ export default async function SessionsPage() {
     where: { macAddress: { in: macs } },
     orderBy: { authorizedAt: "desc" },
   });
-  const byMac = new Map(registrations.map((r) => [r.macAddress, r]));
+
+  // Usamos um Map para busca rápida. Como os registros estão em ordem DESC (mais recentes primeiro),
+  // iteramos normalmente e só adicionamos se ainda não existir no Map, garantindo o mais recente.
+  const byMac = new Map<string, (typeof registrations)[0]>();
+  for (const r of registrations) {
+    const mac = r.macAddress.toLowerCase();
+    if (!byMac.has(mac)) {
+      byMac.set(mac, r);
+    }
+  }
 
   return (
     <div className="space-y-6">
