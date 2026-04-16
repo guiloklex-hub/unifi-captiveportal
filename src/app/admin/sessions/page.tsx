@@ -35,8 +35,9 @@ export default async function SessionsPage() {
     const seen = new Set<string>();
     guests = allGuests.filter((g) => {
       const mac = g.mac.toLowerCase();
-      // Apenas exibe se estiver explicitamente autorizado e se for o primeiro registro desse MAC
-      if (g.authorized !== true || seen.has(mac)) return false;
+      // Em algumas versões da UniFi, o campo authorized pode vir ausente (undefined)
+      // Portanto, só ocultamos se for explicitamente false (não autorizado).
+      if (g.authorized === false || seen.has(mac)) return false;
       seen.add(mac);
       return true;
     });
