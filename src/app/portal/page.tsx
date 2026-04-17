@@ -13,7 +13,7 @@ export default async function PortalPage() {
 
   return (
     <main 
-      className="relative flex h-[100dvh] min-h-screen items-center justify-center bg-slate-50 p-4 pb-[max(env(safe-area-inset-bottom),1rem)]"
+      className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-slate-50 p-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)]"
       style={bgStyle}
     >
       {settings.backgroundUrl && (

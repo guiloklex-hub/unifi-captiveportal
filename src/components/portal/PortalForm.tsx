@@ -95,7 +95,7 @@ export function PortalForm({ settings }: { settings: any }) {
   }
 
   return (
-    <Card className="w-full max-w-md shadow-xl max-h-full overflow-y-auto">
+    <Card className="w-full max-w-md shadow-xl">
       <CardHeader className="text-center">
         {settings?.logoUrl && (
           <div className="mb-4 flex justify-center relative h-16 w-full mx-auto">
@@ -151,13 +151,13 @@ export function PortalForm({ settings }: { settings: any }) {
             />
           </Field>
 
-          <label className="flex items-start gap-3 p-2 -ml-2 rounded-lg hover:bg-slate-50 cursor-pointer min-h-[44px]">
+          <label className="flex items-start gap-3 p-3 -ml-3 rounded-lg hover:bg-slate-50 cursor-pointer min-h-[48px]">
             <input
               type="checkbox"
-              className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
+              className="mt-0.5 h-6 w-6 rounded border-gray-300 text-primary focus:ring-primary shrink-0"
               {...register("acceptTerms")}
             />
-            <span className="text-sm text-slate-600 leading-snug">
+            <span className="text-base text-slate-600 leading-snug">
               Aceito os <TermsModal terms={settings.termsOfUse} /> e a política de tratamento de dados.
             </span>
           </label>
