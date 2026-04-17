@@ -6,9 +6,11 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 
 ### ✨ Atualizações Recentes (Abril 2026)
 
-- **UX Mobile-First**: Otimização completa dos formulários para evitar zoom no iOS, touch targets maiores e layouts que respeitam áreas seguras (Notch/CNA).
-- **Redirecionamento Dinâmico**: O sistema agora detecta automaticamente o Host (IP ou domínio) de acesso, evitando erros de redirecionamento para `localhost`.
-- **Deduplicação de Sessões**: Melhoria na lógica de exibição de visitantes ativos e mapeamento de registros do banco de dados.
+- **Suporte Multi-idioma (i18n)**: Implementação completa de internacionalização para **Português, Inglês e Espanhol**, com detecção automática baseada no navegador.
+- **UX Mobile-First**: Otimização completa dos formulários para evitar zoom indesejado no iOS (font-size 16px), touch targets maiores (min-height 48px) e suporte a Safe Areas (Notch).
+- **Validação Dinâmica**: Mensagens de erro de formulário (Zod) agora são traduzidas dinamicamente de acordo com o idioma do visitante.
+- **Redirecionamento Dinâmico**: O sistema detecta automaticamente o Host de acesso, evitando erros de redirecionamento.
+- **Deduplicação de Sessões**: Melhoria na lógica de exibição de visitantes ativos e mapeamento de registros.
 
 ---
 
@@ -21,6 +23,24 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 - **react-markdown** para termos de uso formatados
 - **undici** para chamadas HTTPS à controladora (suporte a TLS self-signed)
 - **PM2** para gerenciamento de processo em produção
+- **i18n nativo** via Dictionaries (sem dependências externas pesadas)
+
+---
+
+## 🌍 Suporte a Idiomas (i18n)
+
+O sistema detecta automaticamente o idioma do dispositivo do usuário através do cabeçalho `Accept-Language`.
+
+**Idiomas suportados:**
+- 🇧🇷 **Português (PT)**
+- 🇺🇸 **English (EN)**
+- 🇪🇸 **Español (ES)**
+
+**O que foi traduzido:**
+- Todo o fluxo do **Portal Guest** (Formulários, Placeholders, Termos de Uso).
+- Mensagens de erro de **Validação** (Zod).
+- Todo o **Painel Administrativo** (Menus, Dashboard, Logs, Sessões e Configurações).
+- Formatação de datas e números de acordo com a localidade.
 
 ---
 
@@ -367,7 +387,11 @@ unifi-captive-portal/
 │   │   └── admin/               # Tabelas, cards e gráficos
 │   └── lib/
 │       ├── unifi.ts             # Cliente HTTP UniFi
-│       └── auth.ts              # Sessão admin via HMAC
+│       ├── auth.ts              # Sessão admin via HMAC
+│       ├── masks.ts             # Máscaras de CPF/Telefone
+│       ├── validators.ts        # Esquemas Zod (I18n-ready)
+│       └── i18n/
+│           └── dictionaries.ts  # Dicionários PT, EN, ES
 ```
 
 ---
