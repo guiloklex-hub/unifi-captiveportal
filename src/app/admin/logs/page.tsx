@@ -1,17 +1,23 @@
+import { headers } from "next/headers";
+import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { LogsTable } from "@/components/admin/LogsTable";
 
 export const dynamic = "force-dynamic";
 
-export default function LogsPage() {
+export default async function LogsPage() {
+  const headersList = await headers();
+  const locale = getLocale(headersList.get("accept-language"));
+  const dict = dictionaries[locale];
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Logs de conexão</h1>
+        <h1 className="text-2xl font-bold">{dict.admin.logsTitle}</h1>
         <p className="text-sm text-muted-foreground">
-          Todos os visitantes que autenticaram no portal Guest.
+          {dict.admin.logsDesc}
         </p>
       </div>
-      <LogsTable />
+      <LogsTable dict={dict} />
     </div>
   );
 }

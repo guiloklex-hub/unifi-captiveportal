@@ -1,11 +1,18 @@
 import { Suspense } from "react";
+import { headers } from "next/headers";
 import { PortalForm } from "@/components/portal/PortalForm";
 import { getSystemSettings } from "@/lib/settings";
+import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalPage() {
   const settings = await getSystemSettings();
+  
+  const headersList = await headers();
+  const acceptLanguage = headersList.get("accept-language");
+  const locale = getLocale(acceptLanguage);
+  const dict = dictionaries[locale];
   
   const bgStyle = settings.backgroundUrl 
     ? { backgroundImage: `url("${settings.backgroundUrl}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
@@ -20,8 +27,8 @@ export default async function PortalPage() {
         <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
       )}
       <div className="relative z-10 w-full max-w-md">
-        <Suspense fallback={<div>Carregando...</div>}>
-          <PortalForm settings={settings} />
+        <Suspense fallback={<div>{dict.admin.loading}</div>}>
+          <PortalForm settings={settings} dict={dict} />
         </Suspense>
       </div>
     </main>

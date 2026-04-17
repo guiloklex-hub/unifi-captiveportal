@@ -1,3 +1,5 @@
+import { headers } from "next/headers";
+import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { prisma } from "@/lib/prisma";
 import { StatCard } from "@/components/admin/StatCard";
 import {
@@ -100,25 +102,29 @@ async function loadStats() {
 }
 
 export default async function AdminDashboard() {
+  const headersList = await headers();
+  const locale = getLocale(headersList.get("accept-language"));
+  const dict = dictionaries[locale];
+
   const { total, todayCount, distinctCpfs, lineData, buckets, weeks } = await loadStats();
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">Visão geral do portal Guest</p>
+        <h1 className="text-2xl font-bold">{dict.admin.navDashboard}</h1>
+        <p className="text-sm text-muted-foreground">{dict.admin.dashDesc}</p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard title="Total de conexões" value={total.toLocaleString("pt-BR")} />
-        <StatCard title="Usuários únicos (CPF)" value={distinctCpfs.toLocaleString("pt-BR")} />
-        <StatCard title="Conexões hoje" value={todayCount.toLocaleString("pt-BR")} />
+        <StatCard title={dict.admin.dashTotal} value={total.toLocaleString(locale === "en" ? "en-US" : "pt-BR")} />
+        <StatCard title={dict.admin.dashUnique} value={distinctCpfs.toLocaleString(locale === "en" ? "en-US" : "pt-BR")} />
+        <StatCard title={dict.admin.dashToday} value={todayCount.toLocaleString(locale === "en" ? "en-US" : "pt-BR")} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Conexões nos últimos 30 dias</CardTitle>
+            <CardTitle className="text-base">{dict.admin.dash30Days}</CardTitle>
           </CardHeader>
           <CardContent>
             <ConnectionsLineChart data={lineData} />
@@ -127,7 +133,7 @@ export default async function AdminDashboard() {
 
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Horários de pico</CardTitle>
+            <CardTitle className="text-base">{dict.admin.dashPeak}</CardTitle>
           </CardHeader>
           <CardContent>
             <PeakHoursPieChart data={buckets} />
@@ -136,7 +142,7 @@ export default async function AdminDashboard() {
 
         <Card className="lg:col-span-2">
           <CardHeader>
-            <CardTitle className="text-base">Retenção (novos vs recorrentes)</CardTitle>
+            <CardTitle className="text-base">{dict.admin.dashRetention}</CardTitle>
           </CardHeader>
           <CardContent>
             <RetentionBarChart data={weeks} />

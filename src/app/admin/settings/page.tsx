@@ -4,8 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { getLocale, dictionaries, type Dictionary } from "@/lib/i18n/dictionaries";
 
 export default function SettingsPage() {
+  const [dict, setDict] = useState<Dictionary>(dictionaries.pt);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [settings, setSettings] = useState({
@@ -17,6 +19,9 @@ export default function SettingsPage() {
   });
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      setDict(dictionaries[getLocale(navigator.language)]);
+    }
     fetch("/api/admin/settings")
       .then((res) => res.json())
       .then((data) => {
@@ -43,10 +48,10 @@ export default function SettingsPage() {
       if (res.ok) {
         setSettings((prev) => ({ ...prev, [key]: data.url }));
       } else {
-        alert(data.error || "Erro no upload");
+        alert(data.error || dict.admin.uploadError);
       }
     } catch (err) {
-      alert("Erro ao conectar com servidor de upload");
+      alert(dict.admin.connError);
     }
   };
 
@@ -60,52 +65,52 @@ export default function SettingsPage() {
         body: JSON.stringify(settings),
       });
       if (res.ok) {
-        alert("Configurações salvas com sucesso!");
+        alert(dict.admin.saveSuccess);
       } else {
-        alert("Erro ao salvar configurações.");
+        alert(dict.admin.saveError);
       }
     } catch (err) {
-      alert("Erro de conexão.");
+      alert(dict.admin.connError);
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) return <div>Carregando...</div>;
+  if (loading) return <div>{dict.admin.loading}</div>;
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Customização</h1>
-        <p className="text-sm text-muted-foreground">Personalize a identidade visual do seu portal</p>
+        <h1 className="text-2xl font-bold">{dict.admin.settingsTitle}</h1>
+        <p className="text-sm text-muted-foreground">{dict.admin.settingsDesc}</p>
       </div>
 
       <form onSubmit={save} className="grid gap-6">
         <Card>
           <CardHeader>
-            <CardTitle>Branding</CardTitle>
-            <CardDescription>Configure o nome e as imagens da sua marca</CardDescription>
+            <CardTitle>{dict.admin.brandingTitle}</CardTitle>
+            <CardDescription>{dict.admin.brandingDesc}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-1.5">
-              <Label>Nome da Marca</Label>
+              <Label>{dict.admin.brandNameLabel}</Label>
               <Input
                 value={settings.brandName}
                 onChange={(e) => setSettings({ ...settings, brandName: e.target.value })}
-                placeholder="Ex: Minha Empresa"
+                placeholder={dict.admin.brandNamePlaceholder}
               />
             </div>
             <div className="space-y-1.5">
-              <Label>Logotipo</Label>
+              <Label>{dict.admin.logoLabel}</Label>
               <div className="flex gap-2">
                 <Input
                   value={settings.logoUrl}
                   onChange={(e) => setSettings({ ...settings, logoUrl: e.target.value })}
-                  placeholder="URL externa ou upload local"
+                  placeholder={dict.admin.urlPlaceholder}
                 />
                 <div className="relative">
                   <Button type="button" variant="outline" className="cursor-pointer">
-                    Upload
+                    {dict.admin.uploadBtn}
                     <input
                       type="file"
                       className="absolute inset-0 opacity-0 cursor-pointer"
@@ -121,16 +126,16 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <Label>Plano de Fundo (Background)</Label>
+              <Label>{dict.admin.bgLabel}</Label>
               <div className="flex gap-2">
                 <Input
                   value={settings.backgroundUrl}
                   onChange={(e) => setSettings({ ...settings, backgroundUrl: e.target.value })}
-                  placeholder="URL externa ou upload local"
+                  placeholder={dict.admin.urlPlaceholder}
                 />
                 <div className="relative">
                   <Button type="button" variant="outline" className="cursor-pointer">
-                    Upload
+                    {dict.admin.uploadBtn}
                     <input
                       type="file"
                       className="absolute inset-0 opacity-0 cursor-pointer"
@@ -145,7 +150,7 @@ export default function SettingsPage() {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Cor Primária (Hex)</Label>
+              <Label>{dict.admin.colorLabel}</Label>
               <div className="flex gap-2">
                 <Input
                   type="color"
@@ -165,22 +170,22 @@ export default function SettingsPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Termos de Uso</CardTitle>
-            <CardDescription>Texto que será exibido no formulário de acesso</CardDescription>
+            <CardTitle>{dict.admin.termsTitle}</CardTitle>
+            <CardDescription>{dict.admin.termsDesc}</CardDescription>
           </CardHeader>
           <CardContent>
             <textarea
               className="min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={settings.termsOfUse}
               onChange={(e) => setSettings({ ...settings, termsOfUse: e.target.value })}
-              placeholder="Escreva aqui os termos..."
+              placeholder={dict.admin.termsPlaceholder}
             />
           </CardContent>
         </Card>
 
         <div className="flex justify-end">
           <Button type="submit" disabled={saving}>
-            {saving ? "Salvando..." : "Salvar Configurações"}
+            {saving ? dict.admin.savingBtn : dict.admin.saveBtn}
           </Button>
         </div>
       </form>

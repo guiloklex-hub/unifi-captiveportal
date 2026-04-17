@@ -10,6 +10,8 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevokeButton } from "@/components/admin/RevokeButton";
+import { headers } from "next/headers";
+import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +44,15 @@ export default async function SessionsPage() {
       return true;
     });
   } catch (err) {
-    error = err instanceof Error ? err.message : "Erro ao consultar UniFi";
+    // Wait for dict extraction later, or use a default error message
+    error = err instanceof Error ? err.message : "error";
   }
+
+  const headersList = await headers();
+  const locale = getLocale(headersList.get("accept-language"));
+  const dict = dictionaries[locale];
+  
+  if (error === "error") error = dict.admin.unifiError;
 
   const macs = guests.map((g) => g.mac.toLowerCase());
   const registrations = await prisma.guestRegistration.findMany({
@@ -64,9 +73,9 @@ export default async function SessionsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Sessões ativas</h1>
+        <h1 className="text-2xl font-bold">{dict.admin.sessionsTitle}</h1>
         <p className="text-sm text-muted-foreground">
-          Cruzamento entre <code>/stat/guest</code> da UniFi e os registros locais.
+          {dict.admin.sessionsDesc}
         </p>
       </div>
 
@@ -78,18 +87,18 @@ export default async function SessionsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">{guests.length} sessões</CardTitle>
+          <CardTitle className="text-base">{guests.length} {dict.admin.sessionsCount}</CardTitle>
         </CardHeader>
         <CardContent>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Visitante</TableHead>
-                <TableHead>MAC</TableHead>
-                <TableHead>SSID</TableHead>
+                <TableHead>{dict.admin.tableVisitor}</TableHead>
+                <TableHead>{dict.admin.tableMac}</TableHead>
+                <TableHead>{dict.admin.tableSsid}</TableHead>
                 <TableHead>↓ RX</TableHead>
                 <TableHead>↑ TX</TableHead>
-                <TableHead>Início</TableHead>
+                <TableHead>{dict.admin.tableStart}</TableHead>
                 <TableHead></TableHead>
               </TableRow>
             </TableHeader>
@@ -99,17 +108,17 @@ export default async function SessionsPage() {
                 return (
                   <TableRow key={g.mac}>
                     <TableCell className="font-medium">
-                      {reg?.fullName ?? <span className="text-muted-foreground">desconhecido</span>}
+                      {reg?.fullName ?? <span className="text-muted-foreground">{dict.admin.unknown}</span>}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{g.mac}</TableCell>
                     <TableCell>{g.essid ?? "-"}</TableCell>
                     <TableCell>{formatBytes(g.rx_bytes)}</TableCell>
                     <TableCell>{formatBytes(g.tx_bytes)}</TableCell>
                     <TableCell>
-                      {g.start ? new Date(g.start * 1000).toLocaleString("pt-BR") : "-"}
+                      {g.start ? new Date(g.start * 1000).toLocaleString(locale === "en" ? "en-US" : "pt-BR") : "-"}
                     </TableCell>
                     <TableCell>
-                      <RevokeButton mac={g.mac} />
+                      <RevokeButton mac={g.mac} dict={dict} />
                     </TableCell>
                   </TableRow>
                 );
@@ -117,7 +126,7 @@ export default async function SessionsPage() {
               {guests.length === 0 && !error && (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Nenhuma sessão ativa
+                    {dict.admin.noActiveSessions}
                   </TableCell>
                 </TableRow>
               )}

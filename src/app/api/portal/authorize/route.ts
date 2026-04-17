@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { authorizeGuest } from "@/lib/unifi";
-import { guestRegistrationSchema } from "@/lib/validators";
+import { getGuestRegistrationSchema } from "@/lib/validators";
+import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
+  const locale = getLocale(req.headers.get("accept-language"));
+  const dict = dictionaries[locale];
+  const schema = getGuestRegistrationSchema(dict.validation);
+
   let body: unknown;
   try {
     body = await req.json();
@@ -13,7 +18,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
   }
 
-  const parsed = guestRegistrationSchema.safeParse(body);
+  const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Dados inválidos", issues: parsed.error.flatten() },

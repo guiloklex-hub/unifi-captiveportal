@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent } from "@/components/ui/card";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
+import type { Dictionary } from "@/lib/i18n/dictionaries";
 
 type LogRow = {
   id: number;
@@ -24,7 +25,7 @@ type LogRow = {
   authorizedAt: string;
 };
 
-export function LogsTable() {
+export function LogsTable({ dict }: { dict: Dictionary }) {
   const [q, setQ] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -65,15 +66,15 @@ export function LogsTable() {
       <CardContent className="space-y-4 pt-6">
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex-1 min-w-[200px]">
-            <label className="text-xs text-muted-foreground">Busca (nome ou CPF)</label>
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Digite..." />
+            <label className="text-xs text-muted-foreground">{dict.admin.searchLabel}</label>
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={dict.admin.searchPlaceholder} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">De</label>
+            <label className="text-xs text-muted-foreground">{dict.admin.fromLabel}</label>
             <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
           </div>
           <div>
-            <label className="text-xs text-muted-foreground">Até</label>
+            <label className="text-xs text-muted-foreground">{dict.admin.toLabel}</label>
             <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
           </div>
           <Button
@@ -82,14 +83,14 @@ export function LogsTable() {
               load();
             }}
           >
-            Filtrar
+            {dict.admin.filterBtn}
           </Button>
           <Button
             variant="outline"
             asChild
           >
             <a href={`/api/admin/logs?${buildParams({ format: "csv" })}`} download>
-              Exportar CSV
+              {dict.admin.exportCsvBtn}
             </a>
           </Button>
         </div>
@@ -99,26 +100,26 @@ export function LogsTable() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>ID</TableHead>
-                <TableHead>Nome</TableHead>
-                <TableHead>CPF</TableHead>
-                <TableHead>E-mail</TableHead>
-                <TableHead>Telefone</TableHead>
-                <TableHead>MAC</TableHead>
-                <TableHead>Data/Hora</TableHead>
+                <TableHead>{dict.admin.tableId}</TableHead>
+                <TableHead>{dict.admin.tableName}</TableHead>
+                <TableHead>{dict.admin.tableCpf}</TableHead>
+                <TableHead>{dict.admin.tableEmail}</TableHead>
+                <TableHead>{dict.admin.tablePhone}</TableHead>
+                <TableHead>{dict.admin.tableMac}</TableHead>
+                <TableHead>{dict.admin.tableDate}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Carregando...
+                    {dict.admin.loading}
                   </TableCell>
                 </TableRow>
               ) : data.rows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={7} className="text-center text-muted-foreground">
-                    Nenhum registro
+                    {dict.admin.noRecords}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -142,11 +143,11 @@ export function LogsTable() {
         <div className="md:hidden flex flex-col gap-3">
           {loading ? (
             <div className="p-4 text-center text-sm text-muted-foreground border rounded-md">
-              Carregando...
+              {dict.admin.loading}
             </div>
           ) : data.rows.length === 0 ? (
             <div className="p-4 text-center text-sm text-muted-foreground border rounded-md">
-              Nenhum registro
+              {dict.admin.noRecords}
             </div>
           ) : (
             data.rows.map((r) => (
@@ -173,7 +174,7 @@ export function LogsTable() {
 
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">
-            {data.total} registro(s) — página {page} de {totalPages}
+            {data.total} {dict.admin.recordsCount} — {dict.admin.pageCount} {page} {dict.admin.ofCount} {totalPages}
           </span>
           <div className="flex gap-2">
             <Button
@@ -182,7 +183,7 @@ export function LogsTable() {
               disabled={page <= 1}
               onClick={() => setPage((p) => p - 1)}
             >
-              Anterior
+              {dict.admin.prevBtn}
             </Button>
             <Button
               variant="outline"
@@ -190,7 +191,7 @@ export function LogsTable() {
               disabled={page >= totalPages}
               onClick={() => setPage((p) => p + 1)}
             >
-              Próxima
+              {dict.admin.nextBtn}
             </Button>
           </div>
         </div>

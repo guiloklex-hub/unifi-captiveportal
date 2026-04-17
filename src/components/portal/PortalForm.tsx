@@ -18,12 +18,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
-  guestRegistrationSchema,
+  getGuestRegistrationSchema,
   type GuestRegistrationInput,
 } from "@/lib/validators";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
+import type { Dictionary } from "@/lib/i18n/dictionaries";
 
-export function PortalForm({ settings }: { settings: any }) {
+export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary }) {
   const router = useRouter();
   const params = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -47,7 +48,7 @@ export function PortalForm({ settings }: { settings: any }) {
     watch,
     formState: { errors, isSubmitting },
   } = useForm<GuestRegistrationInput>({
-    resolver: zodResolver(guestRegistrationSchema),
+    resolver: zodResolver(getGuestRegistrationSchema(dict.validation)),
     defaultValues: {
       fullName: "",
       email: "",
@@ -71,13 +72,13 @@ export function PortalForm({ settings }: { settings: any }) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setServerError(data?.error ?? "Falha ao autorizar acesso");
+        setServerError(data?.error ?? dict.portal.networkError);
         return;
       }
       const target = data?.redirect || unifiCtx.originalUrl || "";
       router.push(`/portal/success${target ? `?url=${encodeURIComponent(target)}` : ""}`);
     } catch (err) {
-      setServerError("Erro de rede. Tente novamente.");
+      setServerError(dict.portal.networkError);
     }
   };
 
@@ -85,9 +86,9 @@ export function PortalForm({ settings }: { settings: any }) {
     return (
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle>Acesso indisponível</CardTitle>
+          <CardTitle>{dict.portal.unavailableAccess}</CardTitle>
           <CardDescription>
-            Esta página deve ser aberta automaticamente ao conectar na rede Wi-Fi Guest.
+            {dict.portal.unavailableDesc}
           </CardDescription>
         </CardHeader>
       </Card>
@@ -110,7 +111,7 @@ export function PortalForm({ settings }: { settings: any }) {
           </div>
         )}
         <CardTitle className="text-2xl">{settings.brandName}</CardTitle>
-        <CardDescription>Preencha seus dados para acessar o Wi-Fi gratuito.</CardDescription>
+        <CardDescription>{dict.portal.fillDataDesc}</CardDescription>
       </CardHeader>
       <CardContent>
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
@@ -120,20 +121,20 @@ export function PortalForm({ settings }: { settings: any }) {
           <input type="hidden" {...register("site")} />
           <input type="hidden" {...register("originalUrl")} />
 
-          <Field label="Nome completo" error={errors.fullName?.message}>
-            <Input placeholder="João da Silva" autoComplete="name" {...register("fullName")} />
+          <Field label={dict.portal.fullNameLabel} error={errors.fullName?.message}>
+            <Input placeholder={dict.portal.fullNamePlaceholder} autoComplete="name" {...register("fullName")} />
           </Field>
 
-          <Field label="E-mail" error={errors.email?.message}>
+          <Field label={dict.portal.emailLabel} error={errors.email?.message}>
             <Input
               type="email"
-              placeholder="voce@email.com"
+              placeholder={dict.portal.emailPlaceholder}
               autoComplete="email"
               {...register("email")}
             />
           </Field>
 
-          <Field label="Telefone (celular)" error={errors.phone?.message}>
+          <Field label={dict.portal.phoneLabel} error={errors.phone?.message}>
             <Input
               inputMode="tel"
               placeholder="(11) 91234-5678"
@@ -142,7 +143,7 @@ export function PortalForm({ settings }: { settings: any }) {
             />
           </Field>
 
-          <Field label="CPF" error={errors.cpf?.message}>
+          <Field label={dict.portal.cpfLabel} error={errors.cpf?.message}>
             <Input
               inputMode="numeric"
               placeholder="000.000.000-00"
@@ -158,7 +159,7 @@ export function PortalForm({ settings }: { settings: any }) {
               {...register("acceptTerms")}
             />
             <span className="text-base text-slate-600 leading-snug">
-              Aceito os <TermsModal terms={settings.termsOfUse} /> e a política de tratamento de dados.
+              {dict.portal.acceptPrefix} <TermsModal terms={settings.termsOfUse} dict={dict} /> {dict.portal.acceptSuffix}
             </span>
           </label>
           {errors.acceptTerms && (
@@ -179,9 +180,9 @@ export function PortalForm({ settings }: { settings: any }) {
             {isSubmitting ? (
               <>
                 <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Conectando...
+                {dict.portal.connecting}
               </>
-            ) : "Conectar ao Wi-Fi"}
+            ) : dict.portal.connectBtn}
           </Button>
         </form>
       </CardContent>

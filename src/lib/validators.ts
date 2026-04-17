@@ -36,28 +36,30 @@ export function isValidBrazilCell(raw: string): boolean {
   return true;
 }
 
-export const guestRegistrationSchema = z.object({
-  fullName: z
-    .string()
-    .trim()
-    .min(3, "Informe seu nome completo")
-    .max(120, "Nome muito longo")
-    .refine((v) => v.includes(" "), "Informe nome e sobrenome"),
-  email: z.string().trim().toLowerCase().email("E-mail inválido").max(160),
-  phone: z
-    .string()
-    .transform(onlyDigits)
-    .refine(isValidBrazilCell, "Telefone celular inválido"),
-  cpf: z.string().transform(onlyDigits).refine(isValidCPF, "CPF inválido"),
-  acceptTerms: z.literal(true, {
-    errorMap: () => ({ message: "É necessário aceitar os termos" }),
-  }),
-  // Campos vindos da URL de redirecionamento da UniFi
-  mac: z.string().min(12, "MAC ausente"),
-  apMac: z.string().optional().nullable(),
-  ssid: z.string().optional().nullable(),
-  site: z.string().optional().nullable(),
-  originalUrl: z.string().optional().nullable(),
-});
+import type { Dictionary } from "@/lib/i18n/dictionaries";
 
-export type GuestRegistrationInput = z.infer<typeof guestRegistrationSchema>;
+export const getGuestRegistrationSchema = (dict: Dictionary["validation"]) =>
+  z.object({
+    fullName: z
+      .string()
+      .trim()
+      .min(3, dict.valNameRequired)
+      .max(120, dict.valNameLong)
+      .refine((v) => v.includes(" "), dict.valNameFull),
+    email: z.string().trim().toLowerCase().email(dict.valEmailInvalid).max(160),
+    phone: z
+      .string()
+      .transform(onlyDigits)
+      .refine(isValidBrazilCell, dict.valPhoneInvalid),
+    cpf: z.string().transform(onlyDigits).refine(isValidCPF, dict.valCpfInvalid),
+    acceptTerms: z.literal(true, {
+      errorMap: () => ({ message: dict.valTermsRequired }),
+    }),
+    mac: z.string().min(12, dict.valMacMissing),
+    apMac: z.string().optional().nullable(),
+    ssid: z.string().optional().nullable(),
+    site: z.string().optional().nullable(),
+    originalUrl: z.string().optional().nullable(),
+  });
+
+export type GuestRegistrationInput = z.infer<ReturnType<typeof getGuestRegistrationSchema>>;
