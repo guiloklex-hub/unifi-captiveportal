@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevokeButton } from "@/components/admin/RevokeButton";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
+import { ActivityDialog } from "@/components/admin/ActivityDialog";
 
 export const dynamic = "force-dynamic";
 
@@ -117,7 +118,14 @@ export default async function SessionsPage() {
                     <TableCell>
                       {g.start ? new Date(g.start * 1000).toLocaleString(locale === "en" ? "en-US" : "pt-BR") : "-"}
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-right flex items-center justify-end gap-1">
+                      {g.ip && (
+                        <ActivityDialog 
+                          ip={g.ip} 
+                          name={reg?.fullName || g.hostname || g.mac} 
+                          dict={dict} 
+                        />
+                      )}
                       <RevokeButton mac={g.mac} dict={dict} />
                     </TableCell>
                   </TableRow>

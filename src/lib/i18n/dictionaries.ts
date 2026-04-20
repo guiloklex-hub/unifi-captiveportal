@@ -109,6 +109,16 @@ export const dictionaries = {
       saveError: "Erro ao salvar configurações.",
       connError: "Erro de conexão.",
       uploadError: "Erro no upload",
+      activityTitle: "Atividade de Navegação",
+      activityDesc: "Domínios consultados via DNS por este cliente (AdGuard Home).",
+      tableDomain: "Domínio",
+      tableStatus: "Status",
+      tableTime: "Hora",
+      viewActivityBtn: "Ver Atividade",
+      statusAllowed: "Permitido",
+      statusBlocked: "Bloqueado",
+      noActivity: "Nenhuma atividade recente encontrada no servidor DNS.",
+      dnsConfigError: "Configuração do AdGuard Home ausente no servidor.",
     }
   },
   en: {
@@ -210,6 +220,16 @@ export const dictionaries = {
       saveError: "Error saving settings.",
       connError: "Connection error.",
       uploadError: "Upload error",
+      activityTitle: "Browsing Activity",
+      activityDesc: "Domains queried via DNS by this client (AdGuard Home).",
+      tableDomain: "Domain",
+      tableStatus: "Status",
+      tableTime: "Time",
+      viewActivityBtn: "View Activity",
+      statusAllowed: "Allowed",
+      statusBlocked: "Blocked",
+      noActivity: "No recent activity found on the DNS server.",
+      dnsConfigError: "AdGuard Home configuration missing on the server.",
     }
   },
   es: {
@@ -311,6 +331,16 @@ export const dictionaries = {
       saveError: "Error al guardar los ajustes.",
       connError: "Error de conexión.",
       uploadError: "Error al subir",
+      activityTitle: "Actividad de Navegación",
+      activityDesc: "Dominios consultados vía DNS por este cliente (AdGuard Home).",
+      tableDomain: "Dominio",
+      tableStatus: "Estado",
+      tableTime: "Hora",
+      viewActivityBtn: "Ver Actividad",
+      statusAllowed: "Permitido",
+      statusBlocked: "Bloqueado",
+      noActivity: "No se encontró actividad reciente no el servidor DNS.",
+      dnsConfigError: "Falta la configuración de AdGuard Home en el servidor.",
     }
   }
 };

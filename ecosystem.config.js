@@ -2,9 +2,10 @@ module.exports = {
   apps: [
     {
       name: "unifi-portal",
-      script: "node_modules/.bin/next",
-      args: "start -p 80",
+      script: "npm",
+      args: "start",
       cwd: __dirname,
+      exec_mode: "fork",
       instances: 1,
       autorestart: true,
       watch: false,
