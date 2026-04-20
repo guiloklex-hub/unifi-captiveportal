@@ -11,6 +11,7 @@ type UniFiSession = {
   cookieHeader: string;
   csrfToken?: string;
   expiresAt: number;
+  isUnifiOS: boolean;
 };
 
 const SESSION_TTL_MS = 55 * 60 * 1000;
@@ -54,12 +55,27 @@ async function login(): Promise<UniFiSession> {
   if (!username || !password)
     throw new Error("UNIFI_USERNAME / UNIFI_PASSWORD não configurados");
 
-  const res = await undiciFetch(`${baseUrl()}/api/login`, {
+  const base = baseUrl();
+  
+  // Tenta primeiro login UniFi OS (mais moderno)
+  let isUnifiOS = true;
+  let res = await undiciFetch(`${base}/api/auth/login`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ username, password, remember: true }),
     dispatcher: getDispatcher(),
   });
+
+  // Se falhar com 404, tenta login Classic
+  if (res.status === 404) {
+    isUnifiOS = false;
+    res = await undiciFetch(`${base}/api/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ username, password, remember: true }),
+      dispatcher: getDispatcher(),
+    });
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -74,6 +90,7 @@ async function login(): Promise<UniFiSession> {
     cookieHeader,
     csrfToken,
     expiresAt: Date.now() + SESSION_TTL_MS,
+    isUnifiOS,
   };
   return cachedSession;
 }
@@ -94,7 +111,9 @@ async function unifiRequest<T = unknown>(
     };
     if (session.csrfToken) headers["x-csrf-token"] = session.csrfToken;
 
-    return undiciFetch(`${baseUrl()}${path}`, {
+    const fullPath = session.isUnifiOS ? `/proxy/network${path}` : path;
+
+    return undiciFetch(`${baseUrl()}${fullPath}`, {
       method: init.method ?? "GET",
       headers,
       body: init.body ? JSON.stringify(init.body) : undefined,
