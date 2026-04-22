@@ -55,13 +55,20 @@ async function login(): Promise<UniFiSession> {
   if (!username || !password)
     throw new Error("UNIFI_USERNAME / UNIFI_PASSWORD não configurados");
 
+  const commonHeaders: Record<string, string> = {
+    "content-type": "application/json",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Origin": baseUrl(),
+    "Referer": `${baseUrl()}/manage/account/login`,
+  };
+
   const base = baseUrl();
   
   // Tenta primeiro login UniFi OS (mais moderno)
   let isUnifiOS = true;
   let res = await undiciFetch(`${base}/api/auth/login`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: commonHeaders,
     body: JSON.stringify({ username, password, remember: true }),
     dispatcher: getDispatcher(),
   });
@@ -71,10 +78,28 @@ async function login(): Promise<UniFiSession> {
     isUnifiOS = false;
     res = await undiciFetch(`${base}/api/login`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: commonHeaders,
       body: JSON.stringify({ username, password, remember: true }),
       dispatcher: getDispatcher(),
     });
+  }
+
+  // Se falhar no endpoint detectado (401/403), tenta o outro como fallback final
+  if (!res.ok && (res.status === 401 || res.status === 403)) {
+    const alternativeEndpoint = isUnifiOS ? "/api/login" : "/api/auth/login";
+    console.log(`[UniFi] Falha no endpoint ${isUnifiOS ? 'OS' : 'Classic'}, tentando fallback para ${alternativeEndpoint}...`);
+    
+    const fallbackRes = await undiciFetch(`${base}${alternativeEndpoint}`, {
+      method: "POST",
+      headers: commonHeaders,
+      body: JSON.stringify({ username, password, remember: true }),
+      dispatcher: getDispatcher(),
+    });
+
+    if (fallbackRes.ok) {
+      res = fallbackRes;
+      isUnifiOS = !isUnifiOS;
+    }
   }
 
   if (!res.ok) {
@@ -107,6 +132,8 @@ async function unifiRequest<T = unknown>(
   const doFetch = async (session: UniFiSession) => {
     const headers: Record<string, string> = {
       "content-type": "application/json",
+      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      "Origin": baseUrl(),
       cookie: session.cookieHeader,
     };
     if (session.csrfToken) headers["x-csrf-token"] = session.csrfToken;
