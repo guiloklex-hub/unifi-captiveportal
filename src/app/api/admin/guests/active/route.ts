@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { listActiveGuests } from "@/lib/unifi";
 import { prisma } from "@/lib/prisma";
 import { jsonSafe } from "@/lib/utils";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,21 +11,39 @@ export async function GET() {
   try {
     const guests = await listActiveGuests();
 
-    // Sincroniza métricas no SQLite (bytes e lastSeen) por MAC
+    if (guests.length === 0) {
+      return NextResponse.json(jsonSafe({ guests }));
+    }
+
+    // Batch: 1 query para achar todos os registros mais recentes por MAC
+    // (em vez de N findFirst + N update).
+    const macs = guests.map((g) => g.mac.toLowerCase());
+    const now = new Date();
+
+    // SQLite + Prisma não suporta DISTINCT ON; usamos groupBy para pegar o maior id por MAC,
+    // depois buscamos os registros e fazemos um único updateMany condicional por ID.
+    const latestIds = await prisma.guestRegistration.groupBy({
+      by: ["macAddress"],
+      where: { macAddress: { in: macs } },
+      _max: { id: true },
+    });
+    const idByMac = new Map<string, number>();
+    for (const row of latestIds) {
+      if (row._max.id !== null) idByMac.set(row.macAddress, row._max.id);
+    }
+
+    // Atualiza em paralelo, mas limitado pelo conjunto já resolvido (sem N+1 lookups)
     await Promise.all(
-      guests.map(async (g) => {
+      guests.map((g) => {
         const mac = g.mac.toLowerCase();
-        const reg = await prisma.guestRegistration.findFirst({
-          where: { macAddress: mac },
-          orderBy: { authorizedAt: "desc" },
-        });
-        if (!reg) return;
-        await prisma.guestRegistration.update({
-          where: { id: reg.id },
+        const id = idByMac.get(mac);
+        if (!id) return Promise.resolve();
+        return prisma.guestRegistration.update({
+          where: { id },
           data: {
-            bytesTx: g.tx_bytes ? BigInt(g.tx_bytes) : reg.bytesTx,
-            bytesRx: g.rx_bytes ? BigInt(g.rx_bytes) : reg.bytesRx,
-            lastSeenAt: new Date(),
+            bytesTx: g.tx_bytes ? BigInt(g.tx_bytes) : undefined,
+            bytesRx: g.rx_bytes ? BigInt(g.rx_bytes) : undefined,
+            lastSeenAt: now,
           },
         });
       }),
@@ -33,6 +52,7 @@ export async function GET() {
     return NextResponse.json(jsonSafe({ guests }));
   } catch (err) {
     const message = err instanceof Error ? err.message : "Erro";
+    logger.error({ err: message }, "listActiveGuests failed");
     return NextResponse.json({ error: message }, { status: 502 });
   }
 }

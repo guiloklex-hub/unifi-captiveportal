@@ -1,10 +1,16 @@
 import { Agent, fetch as undiciFetch } from "undici";
+import { logger } from "./logger";
 
 /**
- * Cliente HTTP minimalista para a controladora UniFi (v10.1.89, self-hosted).
+ * Cliente HTTP para controladora UniFi (self-hosted ou UniFi OS).
  *
- * Mantém um cookie de sessão em memória e o reutiliza entre chamadas.
- * Sob 401 ou cookie expirado, faz relogin transparente.
+ * - Timeouts de protocolo e por requisição (evita travamento quando a controladora
+ *   fica lenta — causa documentada do incidente de 23/04/2026 às 09:07).
+ * - Retry com backoff para falhas transientes (5xx, aborts, erros de rede).
+ * - Mutex de login para evitar relogin concorrente.
+ * - Circuit breaker: após N falhas seguidas, rejeita requests por um período.
+ * - Detecção OS/Classic por probe (antes de usar credenciais).
+ * - Validação de content-type JSON (detecta sessão invalidada que retorna HTML).
  */
 
 type UniFiSession = {
@@ -15,15 +21,39 @@ type UniFiSession = {
 };
 
 const SESSION_TTL_MS = 55 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 10_000;
+const LOGIN_TIMEOUT_MS = 10_000;
+const RETRY_MAX = 2;
+const RETRY_BASE_MS = 500;
+
+// Circuit breaker
+const CB_FAILURE_THRESHOLD = 5;
+const CB_OPEN_MS = 30_000;
 
 let cachedSession: UniFiSession | null = null;
+let loginPromise: Promise<UniFiSession> | null = null;
+let detectedIsUnifiOS: boolean | null = null;
 let dispatcher: Agent | undefined;
+
+let cbFailureCount = 0;
+let cbOpenUntil = 0;
+
+class UniFiUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UniFiUnavailableError";
+  }
+}
 
 function getDispatcher(): Agent {
   if (!dispatcher) {
     const insecure = process.env.UNIFI_INSECURE_TLS === "true";
     dispatcher = new Agent({
-      connect: { rejectUnauthorized: !insecure },
+      connect: { rejectUnauthorized: !insecure, timeout: 5_000 },
+      bodyTimeout: 15_000,
+      headersTimeout: 10_000,
+      keepAliveTimeout: 30_000,
+      keepAliveMaxTimeout: 60_000,
     });
   }
   return dispatcher;
@@ -41,7 +71,6 @@ function site(): string {
 
 function parseSetCookie(header: string | null): string {
   if (!header) return "";
-  // Cabeçalhos podem vir concatenados; pegamos pares chave=valor
   return header
     .split(/,(?=[^;]+=)/)
     .map((c) => c.split(";")[0].trim())
@@ -49,7 +78,67 @@ function parseSetCookie(header: string | null): string {
     .join("; ");
 }
 
-async function login(): Promise<UniFiSession> {
+function isJsonResponse(res: { headers: { get(name: string): string | null } }): boolean {
+  const ct = res.headers.get("content-type") ?? "";
+  return ct.toLowerCase().includes("application/json");
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+function checkCircuit(): void {
+  if (cbOpenUntil > Date.now()) {
+    throw new UniFiUnavailableError(
+      `UniFi circuit open (aguarde ${Math.ceil((cbOpenUntil - Date.now()) / 1000)}s)`,
+    );
+  }
+}
+
+function recordSuccess(): void {
+  if (cbFailureCount > 0) {
+    logger.info({ cbFailureCount }, "UniFi circuit recovered");
+  }
+  cbFailureCount = 0;
+  cbOpenUntil = 0;
+}
+
+function recordFailure(err: unknown): void {
+  cbFailureCount += 1;
+  if (cbFailureCount >= CB_FAILURE_THRESHOLD) {
+    cbOpenUntil = Date.now() + CB_OPEN_MS;
+    logger.error(
+      { failures: cbFailureCount, openMs: CB_OPEN_MS, err: (err as Error)?.message },
+      "UniFi circuit opened",
+    );
+  }
+}
+
+/**
+ * Probe leve para detectar se é UniFi OS (v7+) ou Classic.
+ * UniFi OS responde com X-CSRF-Token no GET raiz; Classic não.
+ */
+async function detectIsUnifiOS(): Promise<boolean> {
+  if (detectedIsUnifiOS !== null) return detectedIsUnifiOS;
+
+  try {
+    const res = await undiciFetch(`${baseUrl()}/`, {
+      method: "GET",
+      dispatcher: getDispatcher(),
+      signal: AbortSignal.timeout(5_000),
+    });
+    // UniFi OS sempre devolve X-CSRF-Token no GET raiz
+    detectedIsUnifiOS = res.headers.get("x-csrf-token") !== null;
+    logger.debug({ isUnifiOS: detectedIsUnifiOS }, "UniFi variant detected");
+    return detectedIsUnifiOS;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, "UniFi variant probe failed, assuming Classic");
+    // Não persiste detecção em erro — tenta de novo na próxima
+    return false;
+  }
+}
+
+async function doLogin(): Promise<UniFiSession> {
   const username = process.env.UNIFI_USERNAME;
   const password = process.env.UNIFI_PASSWORD;
   if (!username || !password)
@@ -57,67 +146,68 @@ async function login(): Promise<UniFiSession> {
 
   const commonHeaders: Record<string, string> = {
     "content-type": "application/json",
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Origin": baseUrl(),
-    "Referer": `${baseUrl()}/manage/account/login`,
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Origin: baseUrl(),
+    Referer: `${baseUrl()}/manage/account/login`,
   };
 
-  const base = baseUrl();
-  
-  // Tenta primeiro login UniFi OS (mais moderno)
-  let isUnifiOS = true;
-  let res = await undiciFetch(`${base}/api/auth/login`, {
-    method: "POST",
-    headers: commonHeaders,
-    body: JSON.stringify({ username, password, remember: true }),
-    dispatcher: getDispatcher(),
-  });
+  const isUnifiOS = await detectIsUnifiOS();
+  const primary = isUnifiOS ? "/api/auth/login" : "/api/login";
+  const fallback = isUnifiOS ? "/api/login" : "/api/auth/login";
 
-  // Se falhar com 404, tenta login Classic
+  const attempt = async (endpoint: string) =>
+    undiciFetch(`${baseUrl()}${endpoint}`, {
+      method: "POST",
+      headers: commonHeaders,
+      body: JSON.stringify({ username, password, remember: true }),
+      dispatcher: getDispatcher(),
+      signal: AbortSignal.timeout(LOGIN_TIMEOUT_MS),
+    });
+
+  let res = await attempt(primary);
+  let usedIsUnifiOS = isUnifiOS;
+
+  // Se o endpoint primário retornar 404 (variante errada detectada por HTTP), tenta o outro
   if (res.status === 404) {
-    isUnifiOS = false;
-    res = await undiciFetch(`${base}/api/login`, {
-      method: "POST",
-      headers: commonHeaders,
-      body: JSON.stringify({ username, password, remember: true }),
-      dispatcher: getDispatcher(),
-    });
-  }
-
-  // Se falhar no endpoint detectado (401/403), tenta o outro como fallback final
-  if (!res.ok && (res.status === 401 || res.status === 403)) {
-    const alternativeEndpoint = isUnifiOS ? "/api/login" : "/api/auth/login";
-    console.log(`[UniFi] Falha no endpoint ${isUnifiOS ? 'OS' : 'Classic'}, tentando fallback para ${alternativeEndpoint}...`);
-    
-    const fallbackRes = await undiciFetch(`${base}${alternativeEndpoint}`, {
-      method: "POST",
-      headers: commonHeaders,
-      body: JSON.stringify({ username, password, remember: true }),
-      dispatcher: getDispatcher(),
-    });
-
-    if (fallbackRes.ok) {
-      res = fallbackRes;
-      isUnifiOS = !isUnifiOS;
+    logger.warn({ primary, fallback }, "UniFi primary endpoint 404, trying fallback");
+    res = await attempt(fallback);
+    usedIsUnifiOS = !isUnifiOS;
+    if (res.ok) {
+      // Corrige a detecção persistida
+      detectedIsUnifiOS = usedIsUnifiOS;
     }
   }
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`UniFi login falhou (${res.status}): ${text}`);
+    throw new Error(`UniFi login falhou (${res.status}): ${text.slice(0, 200)}`);
   }
 
   const cookieHeader = parseSetCookie(res.headers.get("set-cookie"));
   const csrfToken =
     res.headers.get("x-csrf-token") ?? res.headers.get("x-updated-csrf-token") ?? undefined;
 
-  cachedSession = {
+  const session: UniFiSession = {
     cookieHeader,
     csrfToken,
     expiresAt: Date.now() + SESSION_TTL_MS,
-    isUnifiOS,
+    isUnifiOS: usedIsUnifiOS,
   };
-  return cachedSession;
+  cachedSession = session;
+  logger.info({ isUnifiOS: usedIsUnifiOS, hasCsrf: !!csrfToken }, "UniFi login ok");
+  return session;
+}
+
+/**
+ * Login com mutex: requests simultâneos aguardam a mesma promise.
+ */
+async function login(): Promise<UniFiSession> {
+  if (loginPromise) return loginPromise;
+  loginPromise = doLogin().finally(() => {
+    loginPromise = null;
+  });
+  return loginPromise;
 }
 
 async function ensureSession(): Promise<UniFiSession> {
@@ -125,49 +215,122 @@ async function ensureSession(): Promise<UniFiSession> {
   return login();
 }
 
-async function unifiRequest<T = unknown>(
+type UnifiRequestInit = { method?: "GET" | "POST"; body?: unknown };
+
+async function unifiFetchOnce<T>(
   path: string,
-  init: { method?: "GET" | "POST"; body?: unknown } = {},
-): Promise<T> {
-  const doFetch = async (session: UniFiSession) => {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-      "Origin": baseUrl(),
-      cookie: session.cookieHeader,
-    };
-    if (session.csrfToken) headers["x-csrf-token"] = session.csrfToken;
-
-    const fullPath = session.isUnifiOS ? `/proxy/network${path}` : path;
-
-    return undiciFetch(`${baseUrl()}${fullPath}`, {
-      method: init.method ?? "GET",
-      headers,
-      body: init.body ? JSON.stringify(init.body) : undefined,
-      dispatcher: getDispatcher(),
-    });
+  init: UnifiRequestInit,
+  session: UniFiSession,
+): Promise<{ ok: boolean; status: number; data?: T; text?: string }> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+    "User-Agent":
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    Origin: baseUrl(),
+    cookie: session.cookieHeader,
   };
+  if (session.csrfToken) headers["x-csrf-token"] = session.csrfToken;
 
-  let session = await ensureSession();
-  let res = await doFetch(session);
+  const fullPath = session.isUnifiOS ? `/proxy/network${path}` : path;
 
-  if (res.status === 401 || res.status === 403) {
-    cachedSession = null;
-    session = await login();
-    res = await doFetch(session);
-  }
+  const res = await undiciFetch(`${baseUrl()}${fullPath}`, {
+    method: init.method ?? "GET",
+    headers,
+    body: init.body ? JSON.stringify(init.body) : undefined,
+    dispatcher: getDispatcher(),
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => "");
-    throw new Error(`UniFi ${path} falhou (${res.status}): ${text}`);
-  }
-
-  // Atualiza CSRF rotativo, se enviado
+  // CSRF rotativo
   const newCsrf = res.headers.get("x-updated-csrf-token");
   if (newCsrf && cachedSession) cachedSession.csrfToken = newCsrf;
 
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    return { ok: false, status: res.status, text };
+  }
+
+  if (res.status === 204) return { ok: true, status: 204, data: undefined };
+
+  // Defesa contra sessão invalidada retornando HTML da tela de login com status 200
+  if (!isJsonResponse(res)) {
+    const text = await res.text().catch(() => "");
+    logger.warn(
+      { path, status: res.status, preview: text.slice(0, 120) },
+      "UniFi returned non-JSON on success — invalidating session",
+    );
+    cachedSession = null;
+    return { ok: false, status: 401, text: "non-json response" };
+  }
+
+  const data = (await res.json()) as T;
+  return { ok: true, status: res.status, data };
+}
+
+async function unifiRequest<T = unknown>(
+  path: string,
+  init: UnifiRequestInit = {},
+): Promise<T> {
+  checkCircuit();
+
+  const correlationId = Math.random().toString(36).slice(2, 10);
+  const started = Date.now();
+  const log = logger.child({ correlationId, path, method: init.method ?? "GET" });
+  log.debug("UniFi request start");
+
+  let lastErr: unknown;
+
+  for (let attempt = 0; attempt <= RETRY_MAX; attempt++) {
+    try {
+      let session = await ensureSession();
+      let resp = await unifiFetchOnce<T>(path, init, session);
+
+      // Relogin transparente em 401/403 (sessão expirada ou cookie revogado)
+      if (!resp.ok && (resp.status === 401 || resp.status === 403)) {
+        cachedSession = null;
+        session = await login();
+        resp = await unifiFetchOnce<T>(path, init, session);
+      }
+
+      if (resp.ok) {
+        recordSuccess();
+        log.info({ status: resp.status, ms: Date.now() - started, attempt }, "UniFi request ok");
+        return resp.data as T;
+      }
+
+      // 4xx (exceto 401/403) não são retriáveis: erro do cliente/payload
+      if (resp.status < 500 && resp.status !== 0) {
+        throw new Error(
+          `UniFi ${path} falhou (${resp.status}): ${(resp.text ?? "").slice(0, 200)}`,
+        );
+      }
+
+      lastErr = new Error(`UniFi ${path} status ${resp.status}`);
+    } catch (err) {
+      lastErr = err;
+      const name = (err as Error)?.name;
+      const isRetryable =
+        name === "AbortError" ||
+        name === "TimeoutError" ||
+        name === "TypeError" ||
+        (err instanceof Error && /UniFi .* status 5\d{2}/.test(err.message));
+      if (!isRetryable) {
+        recordFailure(err);
+        throw err;
+      }
+    }
+
+    if (attempt < RETRY_MAX) {
+      const delay = RETRY_BASE_MS * Math.pow(3, attempt); // 500ms, 1500ms
+      log.warn({ attempt: attempt + 1, delay, err: (lastErr as Error)?.message }, "UniFi retry");
+      await sleep(delay);
+    }
+  }
+
+  recordFailure(lastErr);
+  const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  log.error({ ms: Date.now() - started, err: message }, "UniFi request exhausted retries");
+  throw new Error(`UniFi ${path} indisponível após ${RETRY_MAX + 1} tentativas: ${message}`);
 }
 
 export type AuthorizeGuestOptions = {
@@ -218,12 +381,55 @@ export type UniFiGuest = {
 };
 
 export async function listActiveGuests(): Promise<UniFiGuest[]> {
-  const res = await unifiRequest<{ data: UniFiGuest[] }>(
-    `/api/s/${site()}/stat/guest`,
-  );
+  const res = await unifiRequest<{ data: UniFiGuest[] }>(`/api/s/${site()}/stat/guest`);
   return res.data ?? [];
 }
 
 export function clearUniFiSession(): void {
   cachedSession = null;
 }
+
+export type UniFiHealth = {
+  status: "ok" | "degraded" | "down";
+  circuitOpenUntil: number | null;
+  cachedSessionValid: boolean;
+  failures: number;
+};
+
+export async function checkUnifiHealth(): Promise<UniFiHealth> {
+  const cachedSessionValid = !!(cachedSession && cachedSession.expiresAt > Date.now());
+  const circuitOpen = cbOpenUntil > Date.now();
+
+  if (circuitOpen) {
+    return {
+      status: "down",
+      circuitOpenUntil: cbOpenUntil,
+      cachedSessionValid,
+      failures: cbFailureCount,
+    };
+  }
+
+  try {
+    await Promise.race([
+      ensureSession(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("healthz timeout")), 3_000),
+      ),
+    ]);
+    return {
+      status: "ok",
+      circuitOpenUntil: null,
+      cachedSessionValid: true,
+      failures: cbFailureCount,
+    };
+  } catch {
+    return {
+      status: "degraded",
+      circuitOpenUntil: null,
+      cachedSessionValid,
+      failures: cbFailureCount,
+    };
+  }
+}
+
+export { UniFiUnavailableError };
