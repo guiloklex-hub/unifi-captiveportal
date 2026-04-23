@@ -13,6 +13,7 @@ model GuestRegistration {
   phone        String
   cpf          String
   macAddress   String
+  authDate     String    @default("1970-01-01")
   apMac        String?
   ssid         String?
   site         String?
@@ -26,6 +27,7 @@ model GuestRegistration {
   bytesRx      BigInt?
   lastSeenAt   DateTime?
 
+  @@unique([macAddress, authDate])
   @@index([cpf])
   @@index([macAddress])
   @@index([authorizedAt])
