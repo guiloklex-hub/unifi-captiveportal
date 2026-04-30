@@ -5,6 +5,17 @@ import { getGuestRegistrationSchema } from "@/lib/validators";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { logger } from "@/lib/logger";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
+import { getSystemSettings } from "@/lib/settings";
+import {
+  validateTokenForUse,
+  reserveTokenUse,
+  releaseTokenUse,
+  TokenInvalidError,
+  TokenExpiredError,
+  TokenRevokedError,
+  TokenExhaustedError,
+  TokenUnavailableError,
+} from "@/lib/tokens";
 
 export const runtime = "nodejs";
 
@@ -29,7 +40,10 @@ function sanitizeRedirect(url: string | null | undefined): string | null {
 export async function POST(req: NextRequest) {
   const locale = getLocale(req.headers.get("accept-language"));
   const dict = dictionaries[locale];
-  const schema = getGuestRegistrationSchema(dict.validation);
+  const settings = await getSystemSettings();
+  const schema = getGuestRegistrationSchema(dict.validation, {
+    requireToken: settings.requireToken,
+  });
 
   const ip = clientIp(req.headers);
   const rl = rateLimit(`authorize:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
@@ -57,27 +71,111 @@ export async function POST(req: NextRequest) {
   }
 
   const data = parsed.data;
-  const minutes = parseInt(process.env.GUEST_DURATION_MIN ?? "480", 10);
-  const downKbps = parseInt(process.env.GUEST_DOWN_KBPS ?? "0", 10) || undefined;
-  const upKbps = parseInt(process.env.GUEST_UP_KBPS ?? "0", 10) || undefined;
+  let minutes = parseInt(process.env.GUEST_DURATION_MIN ?? "480", 10);
+  let downKbps: number | undefined =
+    parseInt(process.env.GUEST_DOWN_KBPS ?? "0", 10) || undefined;
+  let upKbps: number | undefined =
+    parseInt(process.env.GUEST_UP_KBPS ?? "0", 10) || undefined;
+  let bytesQuotaMB: number | undefined;
+  let unifiSite: string | null = data.site ?? null;
 
   const userAgent = req.headers.get("user-agent") ?? undefined;
   const ipAddress = ip !== "unknown" ? ip : undefined;
+  const fingerprint = data.fingerprint ?? undefined;
 
   const mac = data.mac.toLowerCase();
+  const authDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
   const log = logger.child({ mac, ssid: data.ssid, ip: ipAddress });
 
-  // 1) Autoriza na UniFi PRIMEIRO. Se falhar, nada é persistido — o log do admin
-  //    reflete apenas acessos efetivamente liberados.
+  // Validação e reserva de token (apenas quando exigido pelo SystemSettings).
+  let tokenId: string | null = null;
+  let tokenReserved = false;
+  if (settings.requireToken) {
+    try {
+      const token = await validateTokenForUse(data.token ?? "");
+      tokenId = token.id;
+      minutes = token.durationMin;
+      downKbps = token.downKbps ?? undefined;
+      upKbps = token.upKbps ?? undefined;
+      bytesQuotaMB = token.bytesQuotaMB ?? undefined;
+      // Token vinculado a site específico tem precedência sobre o site da URL UniFi.
+      if (token.site && token.site.trim()) unifiSite = token.site;
+
+      // Sinal de possível reuso fraudulento: mesmo MAC com fingerprint
+      // diferente de uso anterior do mesmo token. Apenas registra em log.
+      if (fingerprint) {
+        const priorWithDiffFp = await prisma.guestRegistration.findFirst({
+          where: {
+            tokenId: token.id,
+            macAddress: mac,
+            AND: [
+              { fingerprint: { not: null } },
+              { fingerprint: { not: fingerprint } },
+            ],
+          },
+          select: { id: true },
+        });
+        if (priorWithDiffFp) {
+          log.warn(
+            { tokenId: token.id },
+            "Fingerprint mismatch on same MAC+token — possible MAC spoofing",
+          );
+        }
+      }
+
+      // Idempotência: se este mesmo MAC já consumiu este token hoje (refresh
+      // do navegador, retentativa após queda de rede, etc.), não incrementa
+      // usedCount de novo — apenas re-autoriza na UniFi com os mesmos limites.
+      const existing = await prisma.guestRegistration.findUnique({
+        where: { macAddress_authDate: { macAddress: mac, authDate } },
+        select: { tokenId: true },
+      });
+      const alreadyConsumed = existing?.tokenId === token.id;
+
+      if (!alreadyConsumed) {
+        await reserveTokenUse(token.id);
+        tokenReserved = true;
+        // Marca primeiro uso (idempotente: só seta se ainda for null).
+        await prisma.accessToken.updateMany({
+          where: { id: token.id, firstUsedAt: null },
+          data: { firstUsedAt: new Date() },
+        }).catch(() => undefined);
+      } else {
+        log.info({ tokenId: token.id }, "Token reuse by same MAC/day — skipping reserve");
+      }
+    } catch (err) {
+      const map = new Map<string, string>([
+        [TokenInvalidError.name, dict.validation.valTokenInvalid],
+        [TokenExpiredError.name, dict.validation.valTokenExpired],
+        [TokenRevokedError.name, dict.validation.valTokenRevoked],
+        [TokenExhaustedError.name, dict.validation.valTokenExhausted],
+        [TokenUnavailableError.name, dict.validation.valTokenExhausted],
+      ]);
+      if (err instanceof Error && map.has(err.name)) {
+        log.info({ tokenError: err.name }, "Token validation failed");
+        return NextResponse.json({ error: map.get(err.name) }, { status: 400 });
+      }
+      throw err;
+    }
+  }
+
+  // Autoriza na UniFi. Se falhar e havia token reservado, libera o uso.
   try {
     await authorizeGuest({
       mac,
       minutes,
       downKbps,
       upKbps,
+      bytesQuotaMB,
       apMac: data.apMac ?? null,
+      site: unifiSite,
     });
   } catch (err) {
+    if (tokenReserved && tokenId) {
+      await releaseTokenUse(tokenId).catch((e) =>
+        log.error({ err: (e as Error).message }, "Failed to release token use after UniFi failure"),
+      );
+    }
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     const isDown = err instanceof UniFiUnavailableError;
     log.error({ err: message, isDown }, "UniFi authorize failed");
@@ -91,9 +189,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // 2) Gravação/atualização idempotente por (mac, dia) após autorização bem-sucedida.
-  const authDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
-
+  // Gravação/atualização idempotente por (mac, dia) após autorização bem-sucedida.
   let createdId: number | null = null;
   try {
     const record = await prisma.guestRegistration.upsert({
@@ -107,12 +203,15 @@ export async function POST(req: NextRequest) {
         authDate,
         apMac: data.apMac ?? null,
         ssid: data.ssid ?? null,
-        site: data.site ?? null,
+        site: unifiSite,
         userAgent,
         ipAddress,
+        fingerprint,
         durationMin: minutes,
         downKbps,
         upKbps,
+        bytesQuotaMB,
+        tokenId,
       },
       update: {
         fullName: data.fullName,
@@ -121,12 +220,15 @@ export async function POST(req: NextRequest) {
         cpf: data.cpf,
         apMac: data.apMac ?? null,
         ssid: data.ssid ?? null,
-        site: data.site ?? null,
+        site: unifiSite,
         userAgent,
         ipAddress,
+        fingerprint,
         durationMin: minutes,
         downKbps,
         upKbps,
+        bytesQuotaMB,
+        tokenId,
         authorizedAt: new Date(),
       },
     });
@@ -142,7 +244,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  log.info({ id: createdId }, "Guest authorized");
+  log.info({ id: createdId, tokenId }, "Guest authorized");
 
   return NextResponse.json({
     ok: true,

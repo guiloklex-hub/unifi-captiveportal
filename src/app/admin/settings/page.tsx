@@ -16,24 +16,29 @@ export default function SettingsPage() {
     backgroundUrl: "",
     primaryColor: "#171717",
     termsOfUse: "",
+    requireToken: false,
   });
+  const [requireTokenLocked, setRequireTokenLocked] = useState(false);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       setDict(dictionaries[getLocale(navigator.language)]);
     }
-    fetch("/api/admin/settings")
-      .then((res) => res.json())
-      .then((data) => {
-        setSettings({
-          brandName: data.brandName ?? "",
-          logoUrl: data.logoUrl ?? "",
-          backgroundUrl: data.backgroundUrl ?? "",
-          primaryColor: data.primaryColor ?? "#171717",
-          termsOfUse: data.termsOfUse ?? "",
-        });
-        setLoading(false);
+    Promise.all([
+      fetch("/api/admin/settings").then((r) => r.json()),
+      fetch("/api/admin/tokens/locks").then((r) => r.json()).catch(() => ({})),
+    ]).then(([data, locks]) => {
+      setSettings({
+        brandName: data.brandName ?? "",
+        logoUrl: data.logoUrl ?? "",
+        backgroundUrl: data.backgroundUrl ?? "",
+        primaryColor: data.primaryColor ?? "#171717",
+        termsOfUse: data.termsOfUse ?? "",
+        requireToken: Boolean(data.requireToken),
       });
+      setRequireTokenLocked(locks?.requireToken !== undefined && locks?.requireToken !== null);
+      setLoading(false);
+    });
   }, []);
 
   const handleUpload = async (file: File, key: "logoUrl" | "backgroundUrl") => {
@@ -180,6 +185,31 @@ export default function SettingsPage() {
               onChange={(e) => setSettings({ ...settings, termsOfUse: e.target.value })}
               placeholder={dict.admin.termsPlaceholder}
             />
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{dict.admin.accessControlTitle}</CardTitle>
+            <CardDescription>{dict.admin.accessControlDesc}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <label className={`flex items-start gap-3 ${requireTokenLocked ? "opacity-60 cursor-not-allowed" : "cursor-pointer"}`}>
+              <input
+                type="checkbox"
+                className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                checked={settings.requireToken}
+                disabled={requireTokenLocked}
+                onChange={(e) => setSettings({ ...settings, requireToken: e.target.checked })}
+              />
+              <span>
+                <span className="block text-sm font-medium">{dict.admin.requireTokenLabel}</span>
+                <span className="block text-xs text-muted-foreground">{dict.admin.requireTokenHint}</span>
+                {requireTokenLocked && (
+                  <span className="block text-xs text-amber-700 mt-1">{dict.admin.lockedByEnv}</span>
+                )}
+              </span>
+            </label>
           </CardContent>
         </Card>
 

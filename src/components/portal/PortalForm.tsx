@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { computeFingerprint } from "@/lib/fingerprint";
 import Image from "next/image";
 import { TermsModal } from "./TermsModal";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -23,8 +24,9 @@ import {
 } from "@/lib/validators";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
+import type { SystemSettings } from "@/lib/settings";
 
-export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary }) {
+export function PortalForm({ settings, dict }: { settings: SystemSettings; dict: Dictionary }) {
   const router = useRouter();
   const params = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -41,6 +43,19 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
     [params],
   );
 
+  const requireToken = Boolean(settings?.requireToken);
+  const fingerprintRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    computeFingerprint().then((fp) => {
+      if (!cancelled) fingerprintRef.current = fp;
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   const {
     register,
     handleSubmit,
@@ -48,12 +63,13 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
     watch,
     formState: { errors, isSubmitting },
   } = useForm<GuestRegistrationInput>({
-    resolver: zodResolver(getGuestRegistrationSchema(dict.validation)),
+    resolver: zodResolver(getGuestRegistrationSchema(dict.validation, { requireToken })),
     defaultValues: {
       fullName: "",
       email: "",
       phone: "",
       cpf: "",
+      token: "",
       acceptTerms: false as unknown as true,
       ...unifiCtx,
     },
@@ -61,6 +77,14 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
 
   const cpf = watch("cpf");
   const phone = watch("phone");
+  const token = watch("token");
+
+  const formatToken = (raw: string): string => {
+    const cleaned = (raw ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+    const parts: string[] = [];
+    for (let i = 0; i < cleaned.length; i += 4) parts.push(cleaned.slice(i, i + 4));
+    return parts.join("-");
+  };
 
   const onSubmit = async (values: GuestRegistrationInput) => {
     setServerError(null);
@@ -68,7 +92,7 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
       const res = await fetch("/api/portal/authorize", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(values),
+        body: JSON.stringify({ ...values, fingerprint: fingerprintRef.current }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -76,8 +100,9 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
         return;
       }
       const target = data?.redirect || unifiCtx.originalUrl || "";
-      router.push(`/portal/success${target ? `?url=${encodeURIComponent(target)}` : ""}`);
-    } catch (err) {
+      const id = data?.id ? `&id=${data.id}` : "";
+      router.push(`/portal/success?${target ? `url=${encodeURIComponent(target)}` : ""}${id}`);
+    } catch {
       setServerError(dict.portal.networkError);
     }
   };
@@ -151,6 +176,20 @@ export function PortalForm({ settings, dict }: { settings: any; dict: Dictionary
               onChange={(e) => setValue("cpf", e.target.value, { shouldValidate: true })}
             />
           </Field>
+
+          {requireToken && (
+            <Field label={dict.portal.tokenLabel} error={errors.token?.message as string | undefined}>
+              <Input
+                placeholder={dict.portal.tokenPlaceholder}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                value={formatToken(token || "")}
+                onChange={(e) => setValue("token", formatToken(e.target.value), { shouldValidate: true })}
+              />
+              <p className="text-xs text-muted-foreground mt-1">{dict.portal.tokenHint}</p>
+            </Field>
+          )}
 
           <label className="flex items-start gap-3 p-3 -ml-3 rounded-lg hover:bg-slate-50 cursor-pointer min-h-[48px]">
             <input

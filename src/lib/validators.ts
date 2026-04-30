@@ -38,7 +38,10 @@ export function isValidBrazilCell(raw: string): boolean {
 
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 
-export const getGuestRegistrationSchema = (dict: Dictionary["validation"]) =>
+export const getGuestRegistrationSchema = (
+  dict: Dictionary["validation"],
+  opts: { requireToken?: boolean } = {},
+) =>
   z.object({
     fullName: z
       .string()
@@ -60,6 +63,10 @@ export const getGuestRegistrationSchema = (dict: Dictionary["validation"]) =>
     ssid: z.string().optional().nullable(),
     site: z.string().optional().nullable(),
     originalUrl: z.string().optional().nullable(),
+    token: opts.requireToken
+      ? z.string().trim().min(8, dict.valTokenRequired)
+      : z.string().optional().nullable(),
+    fingerprint: z.string().trim().min(16).max(128).optional().nullable(),
   });
 
 export type GuestRegistrationInput = z.infer<ReturnType<typeof getGuestRegistrationSchema>>;

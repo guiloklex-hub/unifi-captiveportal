@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { LayoutDashboard, ListOrdered, Wifi, LogOut, Palette } from "lucide-react";
+import { LayoutDashboard, ListOrdered, Wifi, LogOut, Palette, KeyRound } from "lucide-react";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 
@@ -12,6 +12,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin", label: dict.admin.navDashboard, icon: LayoutDashboard },
     { href: "/admin/logs", label: dict.admin.navLogs, icon: ListOrdered },
     { href: "/admin/sessions", label: dict.admin.navSessions, icon: Wifi },
+    { href: "/admin/tokens", label: dict.admin.navTokens, icon: KeyRound },
     { href: "/admin/settings", label: dict.admin.navSettings, icon: Palette },
   ];
 

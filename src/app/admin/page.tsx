@@ -16,6 +16,45 @@ import {
 
 export const dynamic = "force-dynamic";
 
+async function loadTokenMetrics() {
+  const now = new Date();
+  const tokens = await prisma.accessToken.findMany({
+    select: {
+      id: true,
+      revokedAt: true,
+      expiresAt: true,
+      usedCount: true,
+      maxUses: true,
+      createdAt: true,
+      firstUsedAt: true,
+    },
+  });
+  let active = 0, expired = 0, revoked = 0, exhausted = 0;
+  const ttfu: number[] = [];
+  for (const t of tokens) {
+    if (t.revokedAt) revoked++;
+    else if (t.expiresAt.getTime() <= now.getTime()) expired++;
+    else if (t.usedCount >= t.maxUses) exhausted++;
+    else active++;
+    if (t.firstUsedAt) ttfu.push(t.firstUsedAt.getTime() - t.createdAt.getTime());
+  }
+  const avgTtfuMin = ttfu.length > 0
+    ? Math.round(ttfu.reduce((a, b) => a + b, 0) / ttfu.length / 60_000)
+    : 0;
+
+  const top = await prisma.accessToken.findMany({
+    where: { usedCount: { gt: 0 } },
+    orderBy: { usedCount: "desc" },
+    take: 5,
+    select: { code: true, description: true, usedCount: true, maxUses: true },
+  });
+  return {
+    counts: { total: tokens.length, active, expired, revoked, exhausted },
+    avgTtfuMin,
+    top,
+  };
+}
+
 async function loadStats() {
   const startOfToday = new Date();
   startOfToday.setHours(0, 0, 0, 0);
@@ -107,6 +146,7 @@ export default async function AdminDashboard() {
   const dict = dictionaries[locale];
 
   const { total, todayCount, distinctCpfs, lineData, buckets, weeks } = await loadStats();
+  const tokenMetrics = await loadTokenMetrics();
 
   return (
     <div className="space-y-6">
@@ -149,6 +189,56 @@ export default async function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      {tokenMetrics.counts.total > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold">{dict.admin.dashTokensTitle}</h2>
+          <div className="grid gap-4 md:grid-cols-4">
+            <StatCard title={dict.admin.statusActive} value={String(tokenMetrics.counts.active)} />
+            <StatCard title={dict.admin.statusExpired} value={String(tokenMetrics.counts.expired)} />
+            <StatCard title={dict.admin.statusRevoked} value={String(tokenMetrics.counts.revoked)} />
+            <StatCard title={dict.admin.statusExhausted} value={String(tokenMetrics.counts.exhausted)} />
+          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{dict.admin.dashTokenAvgTtfu}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-3xl font-semibold">
+                  {tokenMetrics.avgTtfuMin}
+                  <span className="text-sm text-muted-foreground ml-1">min</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">{dict.admin.dashTokenAvgTtfuHint}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">{dict.admin.dashTokenTopUsage}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {tokenMetrics.top.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">{dict.admin.noTokens}</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {tokenMetrics.top.map((t) => (
+                      <li key={t.code} className="flex items-center justify-between text-sm">
+                        <div>
+                          <span className="font-mono">{t.code}</span>
+                          {t.description && (
+                            <span className="text-muted-foreground ml-2">{t.description}</span>
+                          )}
+                        </div>
+                        <span className="font-medium">{t.usedCount}/{t.maxUses}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

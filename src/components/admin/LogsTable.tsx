@@ -22,7 +22,9 @@ type LogRow = {
   phone: string;
   cpf: string;
   macAddress: string;
+  site: string | null;
   authorizedAt: string;
+  token?: { id: string; code: string; description: string | null } | null;
 };
 
 export function LogsTable({ dict }: { dict: Dictionary }) {
@@ -106,19 +108,20 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
                 <TableHead>{dict.admin.tableEmail}</TableHead>
                 <TableHead>{dict.admin.tablePhone}</TableHead>
                 <TableHead>{dict.admin.tableMac}</TableHead>
+                <TableHead>{dict.admin.tableTokenCode}</TableHead>
                 <TableHead>{dict.admin.tableDate}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     {dict.admin.loading}
                   </TableCell>
                 </TableRow>
               ) : data.rows.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={7} className="text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="text-center text-muted-foreground">
                     {dict.admin.noRecords}
                   </TableCell>
                 </TableRow>
@@ -131,6 +134,13 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
                     <TableCell>{r.email}</TableCell>
                     <TableCell>{maskPhoneBR(r.phone)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.macAddress}</TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {r.token?.code ? (
+                        <span title={r.token.description ?? ""}>{r.token.code}</span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{new Date(r.authorizedAt).toLocaleString("pt-BR")}</TableCell>
                   </TableRow>
                 ))
@@ -164,6 +174,9 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
                 <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600">
                   <div>CPF: <span className="font-medium text-slate-900">{maskCPF(r.cpf)}</span></div>
                   <div>Tel: <span className="font-medium text-slate-900">{maskPhoneBR(r.phone)}</span></div>
+                  {r.token?.code && (
+                    <div>{dict.admin.tableTokenCode}: <span className="font-mono text-slate-900">{r.token.code}</span></div>
+                  )}
                   <div className="w-full font-mono text-[10px] mt-1 text-slate-500">MAC: {r.macAddress}</div>
                 </div>
               </div>
