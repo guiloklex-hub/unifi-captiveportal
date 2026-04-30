@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
       where,
       orderBy: { authorizedAt: "desc" },
       take: 10000,
+      include: { token: { select: { code: true, description: true } } },
     });
     const csv = toCSV(
       rows.map((r) => ({
@@ -45,6 +46,9 @@ export async function GET(req: NextRequest) {
         telefone: r.phone,
         mac: r.macAddress,
         ssid: r.ssid ?? "",
+        site: r.site ?? "",
+        tokenCode: r.token?.code ?? "",
+        tokenDescription: r.token?.description ?? "",
         autorizadoEm: r.authorizedAt.toISOString(),
       })),
       [
@@ -55,6 +59,9 @@ export async function GET(req: NextRequest) {
         { key: "telefone", header: "Telefone" },
         { key: "mac", header: "MAC" },
         { key: "ssid", header: "SSID" },
+        { key: "site", header: "Site" },
+        { key: "tokenCode", header: "Token" },
+        { key: "tokenDescription", header: "Token (descrição)" },
         { key: "autorizadoEm", header: "Autorizado em" },
       ],
     );
@@ -73,6 +80,7 @@ export async function GET(req: NextRequest) {
       orderBy: { authorizedAt: "desc" },
       skip: (page - 1) * pageSize,
       take: pageSize,
+      include: { token: { select: { id: true, code: true, description: true } } },
     }),
   ]);
 

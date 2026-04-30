@@ -6,6 +6,7 @@ export interface SystemSettings {
   backgroundUrl: string | null;
   primaryColor: string;
   termsOfUse: string;
+  requireToken: boolean;
 }
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -14,6 +15,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   backgroundUrl: null,
   primaryColor: "#171717",
   termsOfUse: "Ao conectar, você aceita os termos de uso e a política de privacidade.",
+  requireToken: false,
 };
 
 export async function getSystemSettings(): Promise<SystemSettings> {
@@ -23,7 +25,7 @@ export async function getSystemSettings(): Promise<SystemSettings> {
       update: {},
       create: { id: "config", ...DEFAULT_SETTINGS },
     });
-    
+
     return settings as SystemSettings;
   } catch (error) {
     console.error("Error fetching settings:", error);

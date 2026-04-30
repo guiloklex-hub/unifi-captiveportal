@@ -65,8 +65,13 @@ function baseUrl(): string {
   return url.replace(/\/$/, "");
 }
 
-function site(): string {
+function defaultSite(): string {
   return process.env.UNIFI_SITE || "default";
+}
+
+function resolveSite(site?: string | null): string {
+  const s = (site ?? "").trim();
+  return s.length > 0 ? s : defaultSite();
 }
 
 function parseSetCookie(header: string | null): string {
@@ -340,6 +345,7 @@ export type AuthorizeGuestOptions = {
   downKbps?: number;
   bytesQuotaMB?: number;
   apMac?: string | null;
+  site?: string | null;
 };
 
 export async function authorizeGuest(opts: AuthorizeGuestOptions): Promise<void> {
@@ -348,19 +354,21 @@ export async function authorizeGuest(opts: AuthorizeGuestOptions): Promise<void>
     mac: opts.mac.toLowerCase(),
     minutes: opts.minutes,
   };
-  if (opts.upKbps) payload.up = opts.upKbps;
-  if (opts.downKbps) payload.down = opts.downKbps;
-  if (opts.bytesQuotaMB) payload.bytes = opts.bytesQuotaMB;
+  // Why: `0` é valor inválido para limites no UniFi (sinônimo de ausente);
+  // só inclui no payload quando há limite real (> 0).
+  if (typeof opts.upKbps === "number" && opts.upKbps > 0) payload.up = opts.upKbps;
+  if (typeof opts.downKbps === "number" && opts.downKbps > 0) payload.down = opts.downKbps;
+  if (typeof opts.bytesQuotaMB === "number" && opts.bytesQuotaMB > 0) payload.bytes = opts.bytesQuotaMB;
   if (opts.apMac) payload.ap_mac = opts.apMac.toLowerCase();
 
-  await unifiRequest(`/api/s/${site()}/cmd/stamgr`, {
+  await unifiRequest(`/api/s/${resolveSite(opts.site)}/cmd/stamgr`, {
     method: "POST",
     body: payload,
   });
 }
 
-export async function unauthorizeGuest(mac: string): Promise<void> {
-  await unifiRequest(`/api/s/${site()}/cmd/stamgr`, {
+export async function unauthorizeGuest(mac: string, siteOverride?: string | null): Promise<void> {
+  await unifiRequest(`/api/s/${resolveSite(siteOverride)}/cmd/stamgr`, {
     method: "POST",
     body: { cmd: "unauthorize-guest", mac: mac.toLowerCase() },
   });
@@ -380,8 +388,10 @@ export type UniFiGuest = {
   authorized?: boolean;
 };
 
-export async function listActiveGuests(): Promise<UniFiGuest[]> {
-  const res = await unifiRequest<{ data: UniFiGuest[] }>(`/api/s/${site()}/stat/guest`);
+export async function listActiveGuests(siteOverride?: string | null): Promise<UniFiGuest[]> {
+  const res = await unifiRequest<{ data: UniFiGuest[] }>(
+    `/api/s/${resolveSite(siteOverride)}/stat/guest`,
+  );
   return res.data ?? [];
 }
 

@@ -19,19 +19,51 @@ model GuestRegistration {
   site         String?
   userAgent    String?
   ipAddress    String?
+  fingerprint  String?
   authorizedAt DateTime  @default(now())
   durationMin  Int
   downKbps     Int?
   upKbps       Int?
+  bytesQuotaMB Int?
   bytesTx      BigInt?
   bytesRx      BigInt?
   lastSeenAt   DateTime?
+  reconciledAt DateTime?
+
+  tokenId String?
+  token   AccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
 
   @@unique([macAddress, authDate])
   @@index([cpf])
   @@index([macAddress])
   @@index([authorizedAt])
+  @@index([tokenId])
+  @@index([fingerprint])
 }
+
+model AccessToken {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  description  String?
+  durationMin  Int
+  downKbps     Int?
+  upKbps       Int?
+  bytesQuotaMB Int?
+  maxUses      Int
+  usedCount    Int       @default(0)
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  site         String    @default("default")
+  createdAt    DateTime  @default(now())
+  firstUsedAt  DateTime?
+
+  registrations GuestRegistration[]
+
+  @@index([code])
+  @@index([expiresAt])
+  @@index([site])
+}
+
 model SystemSettings {
   id            String   @id @default("config")
   brandName     String   @default("UniFi Portal")
@@ -39,5 +71,6 @@ model SystemSettings {
   backgroundUrl String?
   primaryColor  String   @default("#171717")
   termsOfUse    String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
+  requireToken  Boolean  @default(false)
   updatedAt     DateTime @updatedAt
 }
