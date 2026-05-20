@@ -226,10 +226,53 @@ Para popular `bytesTx/bytesRx/lastSeenAt` periodicamente, agende um cron:
 
 ```bash
 # /etc/cron.d/unifi-reconcile — executa a cada 5 minutos
-*/5 * * * * root curl -s -X POST http://127.0.0.1/api/admin/reconcile > /dev/null
+*/5 * * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
+  http://127.0.0.1/api/admin/reconcile > /dev/null
 ```
 
 > Para reconciliar um site específico: `POST /api/admin/reconcile?site=<nome-do-site>`.
+> O endpoint `/api/admin/*` exige cookie de admin **ou** `Authorization: Bearer ${CRON_SECRET}` — defina `CRON_SECRET` no `.env` (≥ 16 chars).
+
+### 4.4 Backup do SQLite
+
+Snapshot atômico (suporta WAL) via `sqlite3 .backup`:
+
+```bash
+bash scripts/backup.sh        # gera ./backups/portal-YYYYMMDDTHHMMSSZ.db.gz
+```
+
+Configurável por env: `BACKUP_DIR` (default `./backups`), `BACKUP_RETENTION_DAYS` (default 14).
+
+Cron diário às 03:00:
+
+```bash
+# /etc/cron.d/unifi-portal-backup
+0 3 * * * root cd /opt/unifi-captiveportal && bash scripts/backup.sh \
+  >> /var/log/portal-backup.log 2>&1
+```
+
+Restore: `gunzip < backups/portal-XYZ.db.gz > prisma/dev.db && pm2 restart unifi-portal`.
+
+### 4.5 Retenção de logs de guest
+
+Apaga `GuestRegistration` mais antigos que `GUEST_RETENTION_DAYS` (default 180, mínimo 7):
+
+```bash
+# Cron diário às 03:30
+30 3 * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
+  http://127.0.0.1/api/admin/cleanup > /dev/null
+```
+
+Resposta: `{ ok, retentionDays, cutoff, deleted }`.
+
+### 4.6 Rotação de logs do PM2
+
+```bash
+pm2 install pm2-logrotate
+pm2 set pm2-logrotate:max_size 10M
+pm2 set pm2-logrotate:retain 14
+pm2 set pm2-logrotate:compress true
+```
 
 ---
 
@@ -254,6 +297,7 @@ Todas ficam no arquivo `.env`.
 | `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. 16 chars) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
+| `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 180) | `180` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 
 **Gerar `ADMIN_SECRET`:**
@@ -518,8 +562,15 @@ Recursos do cliente em [src/lib/unifi.ts](src/lib/unifi.ts):
 | `/api/admin/tokens/locks` | GET | Devolve quais campos estão travados via `.env` |
 | `/api/admin/tokens/metrics` | GET | Agregados para dashboard |
 | `/api/admin/reconcile` | POST | Reconciliação UniFi ↔ DB (cron-friendly) |
+| `/api/admin/cleanup` | POST | Apaga GuestRegistration > `GUEST_RETENTION_DAYS` (cron) |
 | `/api/admin/dns-logs` | GET | Atividade DNS via AdGuard Home |
 | `/api/admin/upload` | POST | Upload de imagens (logo/background) |
+
+### Operacionais
+
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `/api/healthz` | GET | Status agregado (UniFi, DB, disco, versão). 200 = ok/degraded; 503 = DB ou disco caído. |
 
 ---
 

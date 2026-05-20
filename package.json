@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 80",
+    "prebuild": "node scripts/gen-build-info.cjs",
     "build": "NODE_OPTIONS='--max-old-space-size=2048' next build",
     "start": "next start -p 80",
     "lint": "next lint",
+    "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",

@@ -5,11 +5,14 @@ out
 .env.local
 prisma/*.db
 prisma/*.db-journal
+prisma/*.db-wal
+prisma/*.db-shm
 prisma/dev.db
 prisma/dev.db-journal
 *.log
 .DS_Store
 tsconfig.tsbuildinfo
+src/build-info.json
 
 # User uploads
 public/uploads/*
