@@ -262,6 +262,8 @@ Todas ficam no arquivo `.env`.
 openssl rand -hex 32
 ```
 
+> Mínimo **32 caracteres** (16 bytes hex). O sistema recusa iniciar com segredo mais curto.
+
 ### 5.2 AdGuard Home (opcional)
 
 | Variável | Descrição |
@@ -581,6 +583,28 @@ curl -X POST \
 ```
 
 > Gere o segredo com `openssl rand -hex 32` e coloque em `.env` como `CRON_SECRET=...`. Caso o valor esteja vazio ou tenha menos de 16 caracteres, o bypass fica desabilitado e a única forma de chamar a API admin é com cookie de sessão.
+
+### 15.3 Defesa CSRF (validação de Origin)
+
+Requisições `POST`/`PUT`/`PATCH`/`DELETE` em `/api/admin/*` exigem que **Origin** ou **Referer** do request bata com o host servido. Falhar a checagem retorna `403 Origem inválida`. Bypass por Bearer (`CRON_SECRET`) ignora essa verificação para scripts internos.
+
+### 15.4 Identificação do IP do cliente
+
+O sistema lê o IP em ordem de confiança: `CF-Connecting-IP` (Cloudflare) → `X-Real-IP` (proxy reverso) → **último** hop de `X-Forwarded-For`. Em produção, **rode atrás de um proxy reverso confiável** (nginx, Cloudflare) que injete um desses headers — caso contrário o IP usado em rate-limit e logs é parcialmente spoofável.
+
+### 15.5 TLS UniFi (certificado self-signed)
+
+Controladoras UniFi em LAN normalmente apresentam certificado self-signed. Há duas opções para o cliente HTTP do portal:
+
+1. **`UNIFI_INSECURE_TLS="true"`** (atual): desabilita a verificação do certificado. Aceitável apenas em segmento de rede confiável; o servidor fica vulnerável a MITM por quem comprometer a LAN entre o portal e o controlador.
+2. **Confiar no CA da UniFi** (recomendado em produção): copie o certificado raiz da controladora para um arquivo PEM e aponte `NODE_EXTRA_CA_CERTS=/caminho/unifi-ca.pem` no `.env`. Deixe `UNIFI_INSECURE_TLS="false"`. O Node passa a aceitar **só** esse CA self-signed, e MITM volta a ser detectável.
+
+### 15.6 Limites de entrada e validação de URL
+
+- Nomes (`brandName`): até **120 caracteres**.
+- Termos de uso: até **8000 caracteres**.
+- Cor primária: hex `#RRGGBB`.
+- `logoUrl`/`backgroundUrl`: aceitos apenas como **caminho relativo** `/uploads/...` ou URL absoluta `http(s)://`. Schemes `javascript:`, `data:`, `vbscript:` são rejeitados — defende contra XSS via `<img src>` injetado no painel.
 
 ---
 

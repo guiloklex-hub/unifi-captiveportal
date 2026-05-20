@@ -15,7 +15,11 @@ function enc(s: string): ArrayBuffer {
 
 function secretKey(): string {
   const s = process.env.ADMIN_SECRET;
-  if (!s || s.length < 16) throw new Error("ADMIN_SECRET ausente ou muito curto");
+  // 32 chars (= 16 bytes hex) é o mínimo prático para HMAC-SHA256. Em prod,
+  // gere com `openssl rand -hex 32` (64 chars).
+  if (!s || s.length < 32) {
+    throw new Error("ADMIN_SECRET ausente ou com menos de 32 caracteres");
+  }
   return s;
 }
 

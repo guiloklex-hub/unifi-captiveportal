@@ -10,6 +10,10 @@ const PUBLIC_PATHS = new Set([
   "/admin/logout",
 ]);
 
+// Métodos que mudam estado — passam por checagem de Origin/Referer para
+// defesa contra CSRF cross-site. GET/HEAD/OPTIONS são considerados safe.
+const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
 function isApi(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
@@ -22,14 +26,37 @@ function timingSafeStringEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+function safeHost(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Aceita a requisição quando Origin OU Referer batem com o Host do request.
+ * Recusa quando ambos faltam ou divergem (CSRF cross-site real).
+ */
+function isSameOrigin(req: NextRequest): boolean {
+  const host = req.headers.get("host");
+  if (!host) return false;
+  const originHost = safeHost(req.headers.get("origin"));
+  const refererHost = safeHost(req.headers.get("referer"));
+  if (originHost && originHost === host) return true;
+  if (refererHost && refererHost === host) return true;
+  return false;
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
-
-  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  const method = req.method.toUpperCase();
 
   // Bypass por Bearer ${CRON_SECRET} para chamadas internas (cron jobs locais).
-  // Why: tarefas de manutenção (futuro reconcile/cleanup) precisam rodar sem
-  // cookie de admin. Comparação constant-time para evitar timing attack.
+  // Why: tarefas de manutenção precisam rodar sem cookie de admin e sem Origin.
+  // Avaliado antes da allowlist e da checagem CSRF para que cron/scripts
+  // internos não fiquem sujeitos a checagem de Origin nem de método.
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && cronSecret.length >= 16) {
     const auth = req.headers.get("authorization") ?? "";
@@ -38,6 +65,14 @@ export async function proxy(req: NextRequest) {
       return NextResponse.next();
     }
   }
+
+  // Defesa CSRF para requests que mudam estado em /api/admin/*.
+  // Vale também para /api/admin/login — impede login forjado cross-site.
+  if (STATE_CHANGING.has(method) && isApi(pathname) && !isSameOrigin(req)) {
+    return NextResponse.json({ error: "Origem inválida" }, { status: 403 });
+  }
+
+  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
 
   const token = req.cookies.get(ADMIN_COOKIE)?.value;
   const valid = await verifySessionToken(token);

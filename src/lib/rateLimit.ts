@@ -47,10 +47,30 @@ export function rateLimit(
   };
 }
 
+/**
+ * Extrai o IP do cliente em ordem de confiança decrescente.
+ *
+ * Why a ordem:
+ *  1. `CF-Connecting-IP` — injetado pela Cloudflare, spoof exige comprometer a CF.
+ *  2. `X-Real-IP` — geralmente injetado por proxy reverso (nginx) confiável.
+ *  3. Último hop de `X-Forwarded-For` — mais resistente a spoof que o primeiro,
+ *     porque o último elemento é adicionado pelo proxy reverso mais próximo do
+ *     servidor; se o app está direto na internet, ainda é spoofável.
+ *
+ * O servidor PRECISA estar atrás de um proxy reverso confiável para que rate
+ * limit e logs registrem o IP correto do cliente. Documentado no README.
+ */
 export function clientIp(headers: Headers): string {
-  return (
-    headers.get("x-forwarded-for")?.split(",")[0]?.trim() ??
-    headers.get("x-real-ip") ??
-    "unknown"
-  );
+  const cf = headers.get("cf-connecting-ip")?.trim();
+  if (cf) return cf;
+
+  const real = headers.get("x-real-ip")?.trim();
+  if (real) return real;
+
+  const xff = headers.get("x-forwarded-for");
+  if (xff) {
+    const parts = xff.split(",").map((s) => s.trim()).filter(Boolean);
+    if (parts.length > 0) return parts[parts.length - 1];
+  }
+  return "unknown";
 }
