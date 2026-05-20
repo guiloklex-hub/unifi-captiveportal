@@ -253,6 +253,7 @@ Todas ficam no arquivo `.env`.
 | `PORTAL_SUCCESS_URL` | Não | Redirect após autorização | `https://empresa.com.br` |
 | `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. 16 chars) | *(gerar)* |
+| `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 
 **Gerar `ADMIN_SECRET`:**
@@ -560,13 +561,33 @@ npx prisma studio    # abre UI em http://localhost:5555
 - **Rate limit**: 10 req/min/IP em `/api/portal/authorize`.
 - **`COOKIE_SECURE=true`** em produção HTTPS.
 
+### 15.1 Proteção do painel admin
+
+O middleware [src/proxy.ts](src/proxy.ts) protege **tanto as páginas** (`/admin/*`) **quanto as APIs** (`/api/admin/*`):
+
+- Sem cookie de sessão válido, páginas redirecionam para `/admin/login` e APIs respondem `401`.
+- Allowlist explícita: `/admin/login`, `/api/admin/login`, `/admin/logout`, `/api/admin/logout`.
+- Bypass por header `Authorization: Bearer ${CRON_SECRET}` é aceito **somente quando `CRON_SECRET` está definido com ≥ 16 caracteres**. Comparação em constant-time evita timing attack.
+- `POST /api/admin/login` tem rate limit de **5 tentativas por minuto por IP** e usa mensagem genérica (`Credenciais inválidas`) para senha errada e rate-limit, evitando enumeração.
+
+### 15.2 Chamadas internas autenticadas (cron / scripts)
+
+Para disparar uma rota admin a partir de cron ou script local, use o `CRON_SECRET`:
+
+```bash
+curl -X POST \
+  -H "Authorization: Bearer $CRON_SECRET" \
+  http://127.0.0.1/api/admin/<rota>
+```
+
+> Gere o segredo com `openssl rand -hex 32` e coloque em `.env` como `CRON_SECRET=...`. Caso o valor esteja vazio ou tenha menos de 16 caracteres, o bypass fica desabilitado e a única forma de chamar a API admin é com cookie de sessão.
+
 ---
 
 ## 16. Roadmap
 
 Funcionalidades planejadas (não entregues nesta versão):
 
-- Auth real do `/api/admin/*` via Next.js middleware (hoje só `/admin/*` via `proxy.ts`).
 - 2FA (TOTP) para o painel admin.
 - Bulk-create de tokens com export CSV.
 - QR Code do token (deep-link `/portal?token=...`).
