@@ -45,6 +45,20 @@ class UniFiUnavailableError extends Error {
   }
 }
 
+/**
+ * Erro do controlador para um request malformado/recusado (4xx ≠ 401/403).
+ * Não retriável e **não conta** para o circuit breaker — o controlador está
+ * vivo e respondendo; só recusou aquele payload específico (ex.: MAC inválido).
+ */
+class UniFiClientError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "UniFiClientError";
+    this.status = status;
+  }
+}
+
 function getDispatcher(): Agent {
   if (!dispatcher) {
     const insecure = process.env.UNIFI_INSECURE_TLS === "true";
@@ -303,9 +317,11 @@ async function unifiRequest<T = unknown>(
         return resp.data as T;
       }
 
-      // 4xx (exceto 401/403) não são retriáveis: erro do cliente/payload
+      // 4xx (exceto 401/403) não são retriáveis: erro do cliente/payload.
+      // Lança UniFiClientError para sinalizar "controlador OK, request ruim".
       if (resp.status < 500 && resp.status !== 0) {
-        throw new Error(
+        throw new UniFiClientError(
+          resp.status,
           `UniFi ${path} falhou (${resp.status}): ${(resp.text ?? "").slice(0, 200)}`,
         );
       }
@@ -313,6 +329,11 @@ async function unifiRequest<T = unknown>(
       lastErr = new Error(`UniFi ${path} status ${resp.status}`);
     } catch (err) {
       lastErr = err;
+      // 4xx do controlador (UniFiClientError) NÃO conta para o circuit breaker:
+      // o controlador está respondendo, apenas o payload foi rejeitado.
+      if (err instanceof UniFiClientError) {
+        throw err;
+      }
       const name = (err as Error)?.name;
       const isRetryable =
         name === "AbortError" ||

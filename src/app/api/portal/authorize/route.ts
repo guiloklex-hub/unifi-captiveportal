@@ -84,7 +84,15 @@ export async function POST(req: NextRequest) {
   const fingerprint = data.fingerprint ?? undefined;
 
   const mac = data.mac.toLowerCase();
-  const authDate = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  // Why: YYYY-MM-DD na timezone BRT — sem isso, guests autorizando próximos
+  // de 00:00 BRT criariam dois registros por dia (23:59 BRT vs 00:01 BRT)
+  // porque o `toISOString()` usa UTC e a diferença é de 3 horas.
+  const authDate = new Intl.DateTimeFormat("sv-SE", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
   const log = logger.child({ mac, ssid: data.ssid, ip: ipAddress });
 
   // Validação e reserva de token (apenas quando exigido pelo SystemSettings).

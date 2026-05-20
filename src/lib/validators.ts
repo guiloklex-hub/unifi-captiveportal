@@ -58,7 +58,13 @@ export const getGuestRegistrationSchema = (
     acceptTerms: z.literal(true, {
       errorMap: () => ({ message: dict.valTermsRequired }),
     }),
-    mac: z.string().min(12, dict.valMacMissing),
+    mac: z
+      .string()
+      .trim()
+      .regex(
+        /^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$/i,
+        dict.valMacMissing,
+      ),
     apMac: z.string().optional().nullable(),
     ssid: z.string().optional().nullable(),
     site: z.string().optional().nullable(),
