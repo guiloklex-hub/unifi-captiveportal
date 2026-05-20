@@ -39,6 +39,7 @@ model GuestRegistration {
   @@index([authorizedAt])
   @@index([tokenId])
   @@index([fingerprint])
+  @@index([site, authorizedAt])
 }
 
 model AccessToken {
