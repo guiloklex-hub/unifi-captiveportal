@@ -77,6 +77,7 @@ Tradução cobre:
 - Acesso `sudo`
 - Controladora UniFi v10.1.89 acessível na rede
 - Node 24.x
+- `git`, `sqlite3` (CLI, usado pelo `scripts/backup.sh`), `openssl` (gerar segredos)
 
 ---
 
@@ -86,10 +87,13 @@ Tradução cobre:
 
 ```bash
 apt update && apt upgrade -y
-apt install -y sudo curl git build-essential libcap2-bin
+apt install -y sudo curl git build-essential libcap2-bin sqlite3 openssl
 ```
 
-> O `libcap2-bin` libera a porta 80 para o Node sem precisar rodar como root; `git` clona o projeto e `curl` baixa o Node.
+> - `libcap2-bin` libera a porta 80 para o Node sem precisar rodar como root.
+> - `git` clona o projeto; `curl` baixa o Node.
+> - `sqlite3` (CLI) é usado por `scripts/backup.sh` para snapshot atômico do banco.
+> - `openssl` gera `ADMIN_SECRET` e `CRON_SECRET`.
 
 ### 1.2 Instalar o NVM (Node Version Manager)
 
@@ -141,6 +145,15 @@ cd unifi-captiveportal
 cp .env.example .env
 nano .env
 ```
+
+**Antes de salvar, gere e cole os dois segredos:**
+
+```bash
+openssl rand -hex 32    # → cole em ADMIN_SECRET (obrigatório, mín. 32 chars)
+openssl rand -hex 32    # → cole em CRON_SECRET (opcional mas necessário se for usar os crons de reconcile/cleanup/backup remoto)
+```
+
+Sem `ADMIN_SECRET` válido (≥ 32 chars), a aplicação **recusa iniciar**. Sem `CRON_SECRET`, os crons retornam `401`/`403`.
 
 Consulte a seção **Variáveis de ambiente** abaixo para detalhes.
 
@@ -222,16 +235,17 @@ cd unifi-captiveportal
 
 ### 4.3 Reconciliação UniFi ↔ DB
 
-Para popular `bytesTx/bytesRx/lastSeenAt` periodicamente, agende um cron:
+Para popular `bytesTx/bytesRx/lastSeenAt` periodicamente, agende um cron. Como o `crontab` **não expande** variáveis do `.env`, leia o segredo do arquivo no próprio comando:
 
 ```bash
 # /etc/cron.d/unifi-reconcile — executa a cada 5 minutos
-*/5 * * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
+*/5 * * * * root . /opt/unifi-captiveportal/.env && \
+  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" \
   http://127.0.0.1/api/admin/reconcile > /dev/null
 ```
 
 > Para reconciliar um site específico: `POST /api/admin/reconcile?site=<nome-do-site>`.
-> O endpoint `/api/admin/*` exige cookie de admin **ou** `Authorization: Bearer ${CRON_SECRET}` — defina `CRON_SECRET` no `.env` (≥ 16 chars).
+> O endpoint `/api/admin/*` exige cookie de admin **ou** `Authorization: Bearer $CRON_SECRET` — defina `CRON_SECRET` no `.env` (≥ 16 chars).
 
 ### 4.4 Backup do SQLite
 
@@ -243,15 +257,18 @@ bash scripts/backup.sh        # gera ./backups/portal-YYYYMMDDTHHMMSSZ.db.gz
 
 Configurável por env: `BACKUP_DIR` (default `./backups`), `BACKUP_RETENTION_DAYS` (default 14).
 
+> **Em produção**, defina `BACKUP_DIR` num caminho **fora** do diretório do projeto (ex.: `/var/backups/unifi-portal`) para que um `rm -rf unifi-captiveportal` (seção 4.2) não destrua os backups.
+
 Cron diário às 03:00:
 
 ```bash
 # /etc/cron.d/unifi-portal-backup
-0 3 * * * root cd /opt/unifi-captiveportal && bash scripts/backup.sh \
+0 3 * * * root cd /opt/unifi-captiveportal && \
+  BACKUP_DIR=/var/backups/unifi-portal bash scripts/backup.sh \
   >> /var/log/portal-backup.log 2>&1
 ```
 
-Restore: `gunzip < backups/portal-XYZ.db.gz > prisma/dev.db && pm2 restart unifi-portal`.
+Restore: `gunzip < /var/backups/unifi-portal/portal-XYZ.db.gz > prisma/dev.db && pm2 restart unifi-portal`.
 
 ### 4.5 Retenção de logs de guest
 
@@ -259,7 +276,8 @@ Apaga `GuestRegistration` mais antigos que `GUEST_RETENTION_DAYS` (default 180, 
 
 ```bash
 # Cron diário às 03:30
-30 3 * * * root curl -fsS -X POST -H "Authorization: Bearer ${CRON_SECRET}" \
+30 3 * * * root . /opt/unifi-captiveportal/.env && \
+  curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" \
   http://127.0.0.1/api/admin/cleanup > /dev/null
 ```
 
@@ -295,7 +313,7 @@ Todas ficam no arquivo `.env`.
 | `GUEST_UP_KBPS` | Não | Limite de upload padrão (Kbps) | `2048` |
 | `PORTAL_SUCCESS_URL` | Não | Redirect após autorização | `https://empresa.com.br` |
 | `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
-| `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. 16 chars) | *(gerar)* |
+| `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 180) | `180` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
@@ -602,6 +620,11 @@ npx prisma studio    # abre UI em http://localhost:5555
 | `requireToken` não pode ser desmarcado no painel | `TOKEN_LOCK_REQUIRE` setado no `.env` | Comente a linha no `.env` e reinicie o PM2 |
 | Métricas de tokens não aparecem no dashboard | Nenhum token criado ainda | Crie um token em `/admin/tokens` |
 | Reconciliação não atualiza bytes | Cron não configurado | Veja seção **4.3** |
+| `Error: ADMIN_SECRET ausente ou com menos de 32 caracteres` no boot | `.env` sem `ADMIN_SECRET` ou com valor curto | Gere com `openssl rand -hex 32` e cole no `.env`; reinicie com `pm2 restart unifi-portal` |
+| Cron retorna `401 Não autorizado` ou `403 Origem inválida` | `CRON_SECRET` ausente, curto (< 16 chars) ou cron não envia o header `Authorization: Bearer` | Defina `CRON_SECRET` no `.env` (≥ 16 chars) e use o cron-exemplo da seção **4.3** que carrega a variável via `. /opt/unifi-captiveportal/.env` |
+| `scripts/backup.sh` falha com "sqlite3: command not found" | CLI ausente | `sudo apt install -y sqlite3` |
+| `bind EACCES 0.0.0.0:80` ao iniciar PM2 | Falta `setcap` na nova versão do Node | Refaça `sudo setcap 'cap_net_bind_service=+ep' $(which node)` (seção **1.4**) e `pm2 restart unifi-portal` |
+| `Could not find a production build in .next` | `npm run build` não rodou nesse host após o `git pull` | Rode `npm run build` antes de `pm2 reload unifi-portal` (seção **4.1**) |
 
 ---
 
