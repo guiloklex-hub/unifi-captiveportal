@@ -16,6 +16,7 @@ import {
   DeviceBreakdownPie,
   HourlyHeatmap,
 } from "@/components/admin/charts/Charts";
+import { ReconcileButton } from "@/components/admin/ReconcileButton";
 import { parseUserAgent, deviceKindLabel, type DeviceKind } from "@/lib/ua-parser";
 import { formatBytes, maskCpf, bigIntToNumber } from "@/lib/format";
 
@@ -429,9 +430,12 @@ export default async function AdminDashboard() {
 
       {/* 1.1 Painel de Tráfego */}
       <section className="space-y-4">
-        <div>
-          <h2 className="text-lg font-semibold">{dict.admin.dashTrafficTitle}</h2>
-          <p className="text-sm text-muted-foreground">{dict.admin.dashTrafficDesc}</p>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">{dict.admin.dashTrafficTitle}</h2>
+            <p className="text-sm text-muted-foreground">{dict.admin.dashTrafficDesc}</p>
+          </div>
+          <ReconcileButton dict={dict} />
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
