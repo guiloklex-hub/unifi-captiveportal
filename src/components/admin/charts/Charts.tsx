@@ -160,11 +160,11 @@ export function DeviceBreakdownPie({
 export function HourlyHeatmap({
   cells,
   dayLabels,
-  cellTitleFmt,
+  cellTitleTemplate,
 }: {
   cells: number[][]; // [day 0..6][hour 0..23]
   dayLabels: string[];
-  cellTitleFmt: (count: number, day: string, hour: number) => string;
+  cellTitleTemplate: string; // ex: "{day} {hour}h: {count} conexão(ões)"
 }) {
   let max = 0;
   for (const row of cells) for (const v of row) if (v > max) max = v;
@@ -174,6 +174,13 @@ export function HourlyHeatmap({
     const intensity = max === 0 ? 0 : v / max;
     const alpha = 0.15 + intensity * 0.85;
     return `rgba(37, 99, 235, ${alpha.toFixed(2)})`;
+  }
+
+  function fmt(count: number, day: string, hour: number) {
+    return cellTitleTemplate
+      .replace("{day}", day)
+      .replace("{hour}", hour.toString().padStart(2, "0"))
+      .replace("{count}", count.toString());
   }
 
   return (
@@ -196,7 +203,7 @@ export function HourlyHeatmap({
                   key={h}
                   className="aspect-square rounded-[3px]"
                   style={{ background: bg(v), minHeight: 18 }}
-                  title={cellTitleFmt(v, dayLabels[d], h)}
+                  title={fmt(v, dayLabels[d], h)}
                 />
               ))}
             </div>

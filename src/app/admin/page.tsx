@@ -421,12 +421,7 @@ export default async function AdminDashboard() {
             <HourlyHeatmap
               cells={data.heatmap}
               dayLabels={data.dayLabels}
-              cellTitleFmt={(count, day, hour) =>
-                dict.admin.dashHeatmapCellTitle
-                  .replace("{day}", day)
-                  .replace("{hour}", hour.toString().padStart(2, "0"))
-                  .replace("{count}", count.toString())
-              }
+              cellTitleTemplate={dict.admin.dashHeatmapCellTitle}
             />
           </CardContent>
         </Card>
