@@ -4,6 +4,17 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 
 ---
 
+## ✨ Atualizações recentes (Maio 2026)
+
+### Dashboard ampliado — BI mais rico (sem novas dependências)
+- **Painel de tráfego (últimos 30 dias)** — totais de download/upload reconciliados, média por sessão, série temporal em `AreaChart` empilhada (TX/RX) e **top 10 consumidores** por CPF (nome, CPF mascarado, volume, sessões).
+- **Heatmap hora × dia da semana** — grade 7×24 com gradação de cor por intensidade, tooltips por célula. Substitui a leitura "linear" do pie de horários de pico por uma visualização de padrões semanais.
+- **Análise de dispositivos** — três donuts (sistema operacional, navegador, tipo de dispositivo) gerados via parser regex de `userAgent` em [src/lib/ua-parser.ts](src/lib/ua-parser.ts), sem dependência externa.
+- **Fingerprint analytics** — KPIs de fingerprints únicos + média por CPF + tabela de fingerprints **suspeitos** (mesmo fingerprint observado em CPFs distintos no período → sinal de compartilhamento ou spoofing).
+- **Tokens enriquecidos** — além das contagens existentes: **taxa média de aproveitamento** (`usedCount/maxUses`), **bytes consumidos por token** (últimos 30d) e lista de **tokens criados há >7d sem nenhum uso** (estoque parado para revisar antes de expirar).
+- Helpers reutilizáveis: [src/lib/format.ts](src/lib/format.ts) (`formatBytes`, `maskCpf`, `bigIntToNumber`).
+- Tudo computado a partir dos dados já capturados (`bytesTx/bytesRx`, `userAgent`, `fingerprint`, `tokenId`); sem novas tabelas, sem nova migration.
+
 ## ✨ Atualizações recentes (Abril 2026)
 
 ### Sistema de tokens de acesso
