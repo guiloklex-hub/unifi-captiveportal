@@ -10,9 +10,11 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevokeButton } from "@/components/admin/RevokeButton";
+import { ReleaseCpfButton } from "@/components/admin/ReleaseCpfButton";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { ActivityDialog } from "@/components/admin/ActivityDialog";
+import { getSystemSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -60,6 +62,7 @@ export default async function SessionsPage() {
     where: { macAddress: { in: macs } },
     orderBy: { authorizedAt: "desc" },
   });
+  const settings = await getSystemSettings();
 
   // Usamos um Map para busca rápida. Como os registros estão em ordem DESC (mais recentes primeiro),
   // iteramos normalmente e só adicionamos se ainda não existir no Map, garantindo o mais recente.
@@ -120,11 +123,14 @@ export default async function SessionsPage() {
                     </TableCell>
                     <TableCell className="text-right flex items-center justify-end gap-1">
                       {g.ip && (
-                        <ActivityDialog 
-                          ip={g.ip} 
-                          name={reg?.fullName || g.hostname || g.mac} 
-                          dict={dict} 
+                        <ActivityDialog
+                          ip={g.ip}
+                          name={reg?.fullName || g.hostname || g.mac}
+                          dict={dict}
                         />
+                      )}
+                      {settings.singleDeviceByCpf && reg?.cpf && (
+                        <ReleaseCpfButton cpf={reg.cpf} dict={dict} />
                       )}
                       <RevokeButton mac={g.mac} dict={dict} />
                     </TableCell>

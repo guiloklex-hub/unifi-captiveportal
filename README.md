@@ -37,6 +37,13 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 - **Máscara de token** no formulário — formatação automática `XXXX-XXXX-XXXX`, `autoCapitalize="characters"`, `spellCheck=false`.
 - **Tradução completa** das novas funcionalidades para PT/EN/ES.
 
+### Bloqueio de 1 dispositivo por CPF
+- **Toggle global** "Limitar a 1 dispositivo por CPF" em `SystemSettings` (default desligado) — impede que o mesmo CPF autorize um segundo MAC enquanto a sessão atual estiver viva (`authorizedAt + durationMin > agora`).
+- **Mesmo MAC sempre passa**: reautorização do dispositivo já registrado é idempotente (refresh, troca de dia, etc.).
+- **Bypass por token**: quando `requireToken=true` e o cliente apresenta token válido, o bloqueio não se aplica — o admin já controla via emissão do token.
+- **Override do admin**: botão "Liberar CPF" em `/admin/sessions` marca as sessões vivas como revogadas (`revokedAt`) e dispara `unauthorize` na UniFi (best-effort).
+- **Auditoria**: campo `GuestRegistration.revokedAt` distingue revogação manual de expiração natural, sem sujar `durationMin`.
+
 ### Correções
 - **`UniFiUnavailableError`** corretamente reconhecida em catch (estava sendo coberta apenas pelo `export {}` no fim do arquivo — confirmamos funcionalidade).
 - **Filtro de payload UniFi** agora usa `typeof === "number" && > 0` em vez de truthy-coercion (`if (opts.upKbps)`), preservando intenção de "sem limite" via `0`/ausente.

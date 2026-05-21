@@ -35,6 +35,7 @@ export const settingsSchema = z.object({
     .regex(HEX_COLOR, "Cor deve ser hex como #1a2b3c"),
   termsOfUse: z.string().max(8000),
   requireToken: z.boolean().optional(),
+  singleDeviceByCpf: z.boolean().optional(),
 });
 
 export type SettingsInput = z.infer<typeof settingsSchema>;

@@ -7,6 +7,7 @@ export interface SystemSettings {
   primaryColor: string;
   termsOfUse: string;
   requireToken: boolean;
+  singleDeviceByCpf: boolean;
 }
 
 const DEFAULT_SETTINGS: SystemSettings = {
@@ -16,6 +17,7 @@ const DEFAULT_SETTINGS: SystemSettings = {
   primaryColor: "#171717",
   termsOfUse: "Ao conectar, você aceita os termos de uso e a política de privacidade.",
   requireToken: false,
+  singleDeviceByCpf: false,
 };
 
 export async function getSystemSettings(): Promise<SystemSettings> {
