@@ -17,6 +17,7 @@ export default function SettingsPage() {
     primaryColor: "#171717",
     termsOfUse: "",
     requireToken: false,
+    singleDeviceByCpf: false,
   });
   const [requireTokenLocked, setRequireTokenLocked] = useState(false);
 
@@ -35,6 +36,7 @@ export default function SettingsPage() {
         primaryColor: data.primaryColor ?? "#171717",
         termsOfUse: data.termsOfUse ?? "",
         requireToken: Boolean(data.requireToken),
+        singleDeviceByCpf: Boolean(data.singleDeviceByCpf),
       });
       setRequireTokenLocked(locks?.requireToken !== undefined && locks?.requireToken !== null);
       setLoading(false);
@@ -208,6 +210,19 @@ export default function SettingsPage() {
                 {requireTokenLocked && (
                   <span className="block text-xs text-amber-700 mt-1">{dict.admin.lockedByEnv}</span>
                 )}
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer mt-4 pt-4 border-t">
+              <input
+                type="checkbox"
+                className="mt-1 h-5 w-5 rounded border-gray-300 text-primary focus:ring-primary"
+                checked={settings.singleDeviceByCpf}
+                onChange={(e) => setSettings({ ...settings, singleDeviceByCpf: e.target.checked })}
+              />
+              <span>
+                <span className="block text-sm font-medium">{dict.admin.singleDeviceLabel}</span>
+                <span className="block text-xs text-muted-foreground">{dict.admin.singleDeviceHint}</span>
               </span>
             </label>
           </CardContent>

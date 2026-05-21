@@ -43,6 +43,8 @@ export async function POST(req: NextRequest) {
   const logoUrl = data.logoUrl === "" ? null : data.logoUrl;
   const backgroundUrl = data.backgroundUrl === "" ? null : data.backgroundUrl;
 
+  const singleDeviceByCpf = Boolean(data.singleDeviceByCpf);
+
   const settings = await prisma.systemSettings.upsert({
     where: { id: "config" },
     update: {
@@ -52,6 +54,7 @@ export async function POST(req: NextRequest) {
       primaryColor: data.primaryColor,
       termsOfUse: data.termsOfUse,
       requireToken: requireTokenFinal,
+      singleDeviceByCpf,
     },
     create: {
       id: "config",
@@ -61,6 +64,7 @@ export async function POST(req: NextRequest) {
       primaryColor: data.primaryColor,
       termsOfUse: data.termsOfUse,
       requireToken: requireTokenFinal,
+      singleDeviceByCpf,
     },
   });
 

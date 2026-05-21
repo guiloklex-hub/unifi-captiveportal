@@ -6,6 +6,7 @@ import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { logger } from "@/lib/logger";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
 import { getSystemSettings } from "@/lib/settings";
+import { findActiveCpfOnOtherDevice } from "@/lib/cpfLock";
 import {
   validateTokenForUse,
   reserveTokenUse,
@@ -164,6 +165,23 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: map.get(err.name) }, { status: 400 });
       }
       throw err;
+    }
+  }
+
+  // Bloqueio de CPF multi-device — só aplica quando a flag está ativa E não
+  // houve reserva de token. Token válido bypassa o bloqueio por decisão de
+  // produto (o admin já controla o acesso via emissão do token).
+  if (settings.singleDeviceByCpf && !tokenReserved) {
+    const conflict = await findActiveCpfOnOtherDevice(data.cpf, mac);
+    if (conflict) {
+      log.info(
+        { conflictMac: conflict.macAddress, conflictId: conflict.id },
+        "CPF blocked: active session on other MAC",
+      );
+      return NextResponse.json(
+        { error: dict.validation.valCpfAlreadyActive },
+        { status: 409 },
+      );
     }
   }
 

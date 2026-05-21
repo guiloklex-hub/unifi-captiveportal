@@ -29,6 +29,7 @@ model GuestRegistration {
   bytesRx      BigInt?
   lastSeenAt   DateTime?
   reconciledAt DateTime?
+  revokedAt    DateTime?
 
   tokenId String?
   token   AccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
@@ -40,6 +41,7 @@ model GuestRegistration {
   @@index([tokenId])
   @@index([fingerprint])
   @@index([site, authorizedAt])
+  @@index([cpf, revokedAt, authorizedAt])
 }
 
 model AccessToken {
@@ -71,7 +73,8 @@ model SystemSettings {
   logoUrl       String?
   backgroundUrl String?
   primaryColor  String   @default("#171717")
-  termsOfUse    String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
-  requireToken  Boolean  @default(false)
-  updatedAt     DateTime @updatedAt
+  termsOfUse        String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
+  requireToken      Boolean  @default(false)
+  singleDeviceByCpf Boolean  @default(false)
+  updatedAt         DateTime @updatedAt
 }
