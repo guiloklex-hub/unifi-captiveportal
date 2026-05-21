@@ -12,6 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
+    # Vars de runtime exigidas para validar que a app sobe na build do Next e
+    # para o postinstall `prisma generate` resolver `prisma.config.ts`. Valores
+    # fake só atravessam o build (não conectam em nada).
+    env:
+      ADMIN_PASSWORD: ci-fake-password
+      ADMIN_SECRET: ci-fake-secret-precisa-de-32-chars-no-minimo-aqui
+      UNIFI_URL: https://example.invalid
+      UNIFI_USERNAME: ci
+      UNIFI_PASSWORD: ci
+      DATABASE_URL: file:./prisma/dev.db
+
     steps:
       - uses: actions/checkout@v4
 
@@ -27,13 +38,4 @@ jobs:
         run: npm run typecheck
 
       - name: Build
-        # Vars de runtime exigidas para validar que a app sobe na build do
-        # Next; valores fake só atravessam o build (não conectam em nada).
-        env:
-          ADMIN_PASSWORD: ci-fake-password
-          ADMIN_SECRET: ci-fake-secret-precisa-de-32-chars-no-minimo-aqui
-          UNIFI_URL: https://example.invalid
-          UNIFI_USERNAME: ci
-          UNIFI_PASSWORD: ci
-          DATABASE_URL: file:./prisma/dev.db
         run: npm run build
