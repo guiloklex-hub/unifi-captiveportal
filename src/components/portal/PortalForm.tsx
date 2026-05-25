@@ -26,6 +26,13 @@ import { maskCPF, maskPhoneBR } from "@/lib/masks";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 import type { SystemSettings } from "@/lib/settings";
 
+function formatTokenCode(raw: string): string {
+  const cleaned = (raw ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
+  const parts: string[] = [];
+  for (let i = 0; i < cleaned.length; i += 4) parts.push(cleaned.slice(i, i + 4));
+  return parts.join("-");
+}
+
 export function PortalForm({ settings, dict }: { settings: SystemSettings; dict: Dictionary }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -69,7 +76,7 @@ export function PortalForm({ settings, dict }: { settings: SystemSettings; dict:
       email: "",
       phone: "",
       cpf: "",
-      token: "",
+      token: formatTokenCode(params.get("token") ?? ""),
       acceptTerms: false as unknown as true,
       ...unifiCtx,
     },
@@ -79,12 +86,7 @@ export function PortalForm({ settings, dict }: { settings: SystemSettings; dict:
   const phone = watch("phone");
   const token = watch("token");
 
-  const formatToken = (raw: string): string => {
-    const cleaned = (raw ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
-    const parts: string[] = [];
-    for (let i = 0; i < cleaned.length; i += 4) parts.push(cleaned.slice(i, i + 4));
-    return parts.join("-");
-  };
+  const formatToken = formatTokenCode;
 
   const onSubmit = async (values: GuestRegistrationInput) => {
     setServerError(null);

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { getLocale, dictionaries, type Dictionary } from "@/lib/i18n/dictionaries";
+import { TokenQrDialog } from "@/components/admin/TokenQrDialog";
 
 type TokenStatus = "active" | "expired" | "revoked" | "exhausted";
 
@@ -264,6 +265,7 @@ export default function TokensPage() {
               <Button type="button" variant="outline" onClick={() => copyCode(createdToken.code)}>
                 {copyMsg ?? dict.admin.copyBtn}
               </Button>
+              <TokenQrDialog tokenId={createdToken.id} code={createdToken.code} dict={dict} />
             </div>
           </CardContent>
         </Card>
@@ -502,6 +504,7 @@ export default function TokensPage() {
                         )}
                       </td>
                       <td className="py-2 pr-3 text-right space-x-2 whitespace-nowrap">
+                        <TokenQrDialog tokenId={t.id} code={t.code} dict={dict} />
                         {!t.revokedAt && t.status !== "expired" && (
                           <Button size="sm" variant="ghost" onClick={() => extend(t.id)}>
                             {dict.admin.extendBtn}

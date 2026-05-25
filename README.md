@@ -4,6 +4,31 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 
 ---
 
+## ✨ Atualizações recentes (Junho 2026)
+
+### QR Code do token (deep-link)
+- Cada token agora tem um **QR code** disponível no painel admin (`/admin/tokens`).
+- Escanear o QR abre o portal já com o campo "Token de acesso" preenchido — o convidado só precisa completar nome/email/CPF.
+- Endpoint: `GET /api/admin/tokens/{id}/qr` (SVG por padrão; `?format=png` para PNG). Header `X-Token-DeepLink` retorna a URL embutida.
+- Deep-link gerado: `${PUBLIC_PORTAL_URL ?? host}/guest/s/{site}?token={code}`. Configure `PUBLIC_PORTAL_URL` (seção 5.1) com o domínio público para que o QR aponte para a URL real que o convidado consegue acessar.
+- Adiciona dependência `qrcode` (~50KB) + `@types/qrcode`.
+
+### Indicadores ao vivo no dashboard
+- Nova seção `LiveCounters` no topo de `/admin` com 4 KPIs que se atualizam a cada 15s:
+  - **Tokens emitidos · 24h** — `accessToken.count` na janela.
+  - **Dispositivos online agora** — `listActiveGuests()` direto na controladora (graceful fallback para `—` quando a UniFi está down, não derruba o painel).
+  - **Tráfego processado · 24h** — soma de `bytesTx + bytesRx` em `GuestRegistration` na janela.
+  - **Uptime do serviço** — `process.uptime()`.
+- Endpoint: `GET /api/admin/live-metrics`.
+
+### Filtro multi-site no painel
+- Dropdown `SiteFilter` no topo de `/admin`, `/admin/logs` e `/admin/sessions`. Lista sites distintos derivados de `GuestRegistration.site` ∪ `AccessToken.site`.
+- Estado vive na query string (`?site=event-2026`), persiste entre navegações no admin. Selecionar "Todos os sites" remove o filtro.
+- `/api/admin/logs?site=...` (e CSV) aplicam o filtro; `/admin/sessions?site=...` repassa para `listActiveGuests(site)`; o dashboard propaga o filtro para todas as queries Prisma de `GuestRegistration` e `AccessToken`.
+- Endpoint: `GET /api/admin/sites` retorna `{ sites: [...] }`.
+
+---
+
 ## ✨ Atualizações recentes (Maio 2026)
 
 ### Dashboard ampliado — BI mais rico (sem novas dependências)
@@ -335,6 +360,7 @@ Todas ficam no arquivo `.env`.
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 180) | `180` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
+| `PUBLIC_PORTAL_URL` | Não | URL pública (com protocolo) usada para gerar deep-links de QR de token. Se vazio, usa o `Host` da requisição admin — que pode ser interno (`127.0.0.1`) e inviável para escanear. | `https://wifi.empresa.com.br` |
 
 **Gerar `ADMIN_SECRET`:**
 

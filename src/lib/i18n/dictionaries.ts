@@ -259,6 +259,17 @@ export const dictionaries = {
       weekShortThu: "Qui",
       weekShortFri: "Sex",
       weekShortSat: "Sáb",
+      tokenQrTitle: "QR do token",
+      tokenQrHint: "O convidado pode escanear este QR para abrir o portal com o token já preenchido.",
+      tokenQrDownload: "Baixar SVG",
+      liveTitle: "Indicadores ao vivo",
+      liveTokens24h: "Tokens emitidos · 24h",
+      liveOnlineNow: "Dispositivos online agora",
+      liveTraffic24h: "Tráfego processado · 24h",
+      liveUptime: "Uptime do serviço",
+      liveUnavailable: "—",
+      siteFilterLabel: "Site UniFi",
+      siteFilterAll: "Todos os sites",
     }
   },
   en: {
@@ -510,6 +521,17 @@ export const dictionaries = {
       weekShortThu: "Thu",
       weekShortFri: "Fri",
       weekShortSat: "Sat",
+      tokenQrTitle: "Token QR code",
+      tokenQrHint: "The guest can scan this QR to open the portal with the token already filled.",
+      tokenQrDownload: "Download SVG",
+      liveTitle: "Live indicators",
+      liveTokens24h: "Tokens issued · 24h",
+      liveOnlineNow: "Devices online now",
+      liveTraffic24h: "Traffic processed · 24h",
+      liveUptime: "Service uptime",
+      liveUnavailable: "—",
+      siteFilterLabel: "UniFi Site",
+      siteFilterAll: "All sites",
     }
   },
   es: {
@@ -761,6 +783,17 @@ export const dictionaries = {
       weekShortThu: "Jue",
       weekShortFri: "Vie",
       weekShortSat: "Sáb",
+      tokenQrTitle: "Código QR del token",
+      tokenQrHint: "El invitado puede escanear este QR para abrir el portal con el token ya rellenado.",
+      tokenQrDownload: "Descargar SVG",
+      liveTitle: "Indicadores en vivo",
+      liveTokens24h: "Tokens emitidos · 24h",
+      liveOnlineNow: "Dispositivos en línea ahora",
+      liveTraffic24h: "Tráfico procesado · 24h",
+      liveUptime: "Tiempo activo del servicio",
+      liveUnavailable: "—",
+      siteFilterLabel: "Site UniFi",
+      siteFilterAll: "Todos los sites",
     }
   }
 };

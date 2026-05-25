@@ -17,6 +17,8 @@ import {
   HourlyHeatmap,
 } from "@/components/admin/charts/Charts";
 import { ReconcileButton } from "@/components/admin/ReconcileButton";
+import { LiveCounters } from "@/components/admin/LiveCounters";
+import { SiteFilter } from "@/components/admin/SiteFilter";
 import { parseUserAgent, deviceKindLabel, type DeviceKind } from "@/lib/ua-parser";
 import { formatBytes, maskCpf, bigIntToNumber } from "@/lib/format";
 
@@ -52,7 +54,7 @@ function entriesToTopN<K>(map: Map<K, number>, n: number): { label: K; value: nu
     .slice(0, n);
 }
 
-async function loadDashboard(locale: Locale) {
+async function loadDashboard(locale: Locale, siteFilter?: string) {
   const dict = dictionaries[locale];
 
   const startOfToday = new Date();
@@ -65,14 +67,19 @@ async function loadDashboard(locale: Locale) {
   const sevenDaysAgo = new Date();
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
+  // Filtro multi-site: aplicado em todas as queries de GuestRegistration e AccessToken.
+  // GuestRegistration.site é nullable; AccessToken.site default "default".
+  const regSite = siteFilter ? { site: siteFilter } : {};
+  const tokenSite = siteFilter ? { site: siteFilter } : {};
+
   const [total, todayCount, distinctCpfs, recent, allBefore, allTokens] = await Promise.all([
-    prisma.guestRegistration.count(),
-    prisma.guestRegistration.count({ where: { authorizedAt: { gte: startOfToday } } }),
+    prisma.guestRegistration.count({ where: regSite }),
+    prisma.guestRegistration.count({ where: { ...regSite, authorizedAt: { gte: startOfToday } } }),
     prisma.guestRegistration
-      .findMany({ select: { cpf: true }, distinct: ["cpf"] })
+      .findMany({ where: regSite, select: { cpf: true }, distinct: ["cpf"] })
       .then((r) => r.length),
     prisma.guestRegistration.findMany({
-      where: { authorizedAt: { gte: last30 } },
+      where: { ...regSite, authorizedAt: { gte: last30 } },
       select: {
         authorizedAt: true,
         cpf: true,
@@ -86,10 +93,11 @@ async function loadDashboard(locale: Locale) {
       orderBy: { authorizedAt: "asc" },
     }),
     prisma.guestRegistration.findMany({
-      where: { authorizedAt: { lt: last30 } },
+      where: { ...regSite, authorizedAt: { lt: last30 } },
       select: { cpf: true },
     }),
     prisma.accessToken.findMany({
+      where: tokenSite,
       select: {
         id: true,
         code: true,
@@ -322,7 +330,7 @@ async function loadDashboard(locale: Locale) {
     .slice(0, 10);
 
   const topUsage = await prisma.accessToken.findMany({
-    where: { usedCount: { gt: 0 } },
+    where: { ...tokenSite, usedCount: { gt: 0 } },
     orderBy: { usedCount: "desc" },
     take: 5,
     select: { code: true, description: true, usedCount: true, maxUses: true },
@@ -359,20 +367,34 @@ async function loadDashboard(locale: Locale) {
   };
 }
 
-export default async function AdminDashboard() {
+export default async function AdminDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<{ site?: string }>;
+}) {
   const headersList = await headers();
   const locale = getLocale(headersList.get("accept-language"));
   const dict = dictionaries[locale];
   const intl = locale === "en" ? "en-US" : locale === "es" ? "es-ES" : "pt-BR";
+  const { site } = await searchParams;
+  const siteFilter = site && site !== "all" ? site : undefined;
 
-  const data: DashboardData = await loadDashboard(locale);
+  const data: DashboardData = await loadDashboard(locale, siteFilter);
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">{dict.admin.navDashboard}</h1>
-        <p className="text-sm text-muted-foreground">{dict.admin.dashDesc}</p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{dict.admin.navDashboard}</h1>
+          <p className="text-sm text-muted-foreground">{dict.admin.dashDesc}</p>
+        </div>
+        <SiteFilter dict={dict} />
       </div>
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-medium text-muted-foreground">{dict.admin.liveTitle}</h2>
+        <LiveCounters dict={dict} locale={locale} />
+      </section>
 
       {/* Resumo */}
       <div className="grid gap-4 md:grid-cols-3">

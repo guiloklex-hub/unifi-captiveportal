@@ -42,6 +42,7 @@ function buildWhere(sp: URLSearchParams): Prisma.GuestRegistrationWhereInput {
   const q = sp.get("q")?.trim() ?? "";
   const from = sp.get("from");
   const to = sp.get("to");
+  const site = sp.get("site")?.trim();
 
   if (q) {
     where.OR = [
@@ -54,6 +55,9 @@ function buildWhere(sp: URLSearchParams): Prisma.GuestRegistrationWhereInput {
     where.authorizedAt = {};
     if (from) where.authorizedAt.gte = new Date(`${from}T00:00:00`);
     if (to) where.authorizedAt.lte = new Date(`${to}T23:59:59`);
+  }
+  if (site && site !== "all") {
+    where.site = site;
   }
   return where;
 }

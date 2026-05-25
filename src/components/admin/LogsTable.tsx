@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -28,6 +29,8 @@ type LogRow = {
 };
 
 export function LogsTable({ dict }: { dict: Dictionary }) {
+  const searchParams = useSearchParams();
+  const site = searchParams.get("site") ?? "";
   const [q, setQ] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -41,6 +44,7 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
       ...(q && { q }),
       ...(from && { from }),
       ...(to && { to }),
+      ...(site && site !== "all" && { site }),
       page: String(page),
       pageSize: String(pageSize),
       ...extra,
@@ -59,7 +63,7 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [page, site]);
 
   const totalPages = Math.max(1, Math.ceil(data.total / pageSize));
 

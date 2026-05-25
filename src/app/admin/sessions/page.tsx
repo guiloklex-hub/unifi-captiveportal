@@ -14,6 +14,7 @@ import { ReleaseCpfButton } from "@/components/admin/ReleaseCpfButton";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { ActivityDialog } from "@/components/admin/ActivityDialog";
+import { SiteFilter } from "@/components/admin/SiteFilter";
 import { getSystemSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
@@ -30,11 +31,17 @@ function formatBytes(n?: number): string {
   return `${v.toFixed(1)} ${units[i]}`;
 }
 
-export default async function SessionsPage() {
+export default async function SessionsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ site?: string }>;
+}) {
+  const { site } = await searchParams;
+  const siteFilter = site && site !== "all" ? site : undefined;
   let guests: Awaited<ReturnType<typeof listActiveGuests>> = [];
   let error: string | null = null;
   try {
-    const allGuests = await listActiveGuests();
+    const allGuests = await listActiveGuests(siteFilter);
     // Filtra para exibir apenas quem está efetivamente autorizado no momento
     // E garante unicidade por MAC para evitar glitches de chaves duplicadas na tabela
     const seen = new Set<string>();
@@ -76,11 +83,14 @@ export default async function SessionsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">{dict.admin.sessionsTitle}</h1>
-        <p className="text-sm text-muted-foreground">
-          {dict.admin.sessionsDesc}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">{dict.admin.sessionsTitle}</h1>
+          <p className="text-sm text-muted-foreground">
+            {dict.admin.sessionsDesc}
+          </p>
+        </div>
+        <SiteFilter dict={dict} />
       </div>
 
       {error && (
