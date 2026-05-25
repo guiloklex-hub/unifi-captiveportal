@@ -17,3 +17,4 @@ src/build-info.json
 # User uploads
 public/uploads/*
 !public/uploads/.gitkeep
+.aider*
