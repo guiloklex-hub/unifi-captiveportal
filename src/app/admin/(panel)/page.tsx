@@ -20,7 +20,7 @@ import { ReconcileButton } from "@/components/admin/ReconcileButton";
 import { LiveCounters } from "@/components/admin/LiveCounters";
 import { SiteFilter } from "@/components/admin/SiteFilter";
 import { parseUserAgent, deviceKindLabel, type DeviceKind } from "@/lib/ua-parser";
-import { formatBytes, maskCpf, bigIntToNumber } from "@/lib/format";
+import { formatBytes, maskVisitorKey, bigIntToNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
@@ -65,13 +65,14 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     prisma.guestRegistration.count({ where: regSite }),
     prisma.guestRegistration.count({ where: { ...regSite, authorizedAt: { gte: startOfToday } } }),
     prisma.guestRegistration
-      .findMany({ where: regSite, select: { cpf: true }, distinct: ["cpf"] })
+      .findMany({ where: regSite, select: { visitorKey: true }, distinct: ["visitorKey"] })
       .then((r) => r.length),
     prisma.guestRegistration.findMany({
       where: { ...regSite, authorizedAt: { gte: last30 } },
       select: {
         authorizedAt: true,
-        cpf: true,
+        visitorKey: true,
+        authMethod: true,
         fullName: true,
         bytesTx: true,
         bytesRx: true,
@@ -83,7 +84,8 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     }),
     prisma.guestRegistration.findMany({
       where: { ...regSite, authorizedAt: { lt: last30 } },
-      select: { cpf: true },
+      select: { visitorKey: true },
+      distinct: ["visitorKey"],
     }),
     prisma.accessToken.findMany({
       where: tokenSite,
@@ -133,7 +135,7 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
 
   // ----- Retenção semanal (novos vs recorrentes) -----
   const seenCpfs = new Set<string>();
-  allBefore.forEach((r) => seenCpfs.add(r.cpf));
+  allBefore.forEach((r) => seenCpfs.add(r.visitorKey));
 
   const weeks: { period: string; novos: number; recorrentes: number }[] = [];
   for (let w = 3; w >= 0; w--) {
@@ -149,10 +151,10 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     let novos = 0;
     let recorrentes = 0;
     for (const e of wEntries) {
-      if (seenCpfs.has(e.cpf)) recorrentes++;
+      if (seenCpfs.has(e.visitorKey)) recorrentes++;
       else {
         novos++;
-        seenCpfs.add(e.cpf);
+        seenCpfs.add(e.visitorKey);
       }
     }
     weeks.push({ period, novos, recorrentes });
@@ -165,6 +167,7 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
   let totalTx = 0;
   let totalRx = 0;
   let sessionsWithBytes = 0;
+  // Chave = visitorKey (CPF, documento, e-mail ou MAC — funciona com qualquer configuração de formulário).
   const consumerMap = new Map<string, { cpf: string; fullName: string; totalBytes: number; sessions: number }>();
 
   for (const r of recent) {
@@ -181,15 +184,15 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     cell.rx += rx;
     bytesPerDay.set(k, cell);
 
-    const cur = consumerMap.get(r.cpf) ?? {
-      cpf: r.cpf,
+    const cur = consumerMap.get(r.visitorKey) ?? {
+      cpf: r.visitorKey,
       fullName: r.fullName,
       totalBytes: 0,
       sessions: 0,
     };
     cur.totalBytes += sum;
     cur.sessions++;
-    consumerMap.set(r.cpf, cur);
+    consumerMap.set(r.visitorKey, cur);
   }
   const bytesData = Array.from(bytesPerDay, ([date, { tx, rx }]) => ({
     date: date.slice(5),
@@ -230,6 +233,23 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
   const browserData = entriesToTopN(browserMap, 6);
   const deviceData = entriesToTopN(deviceMap, 4);
 
+  // ----- Formas de acesso -----
+  const methodLabels: Record<string, string> = {
+    form: dict.admin.methodForm,
+    token: dict.admin.methodToken,
+    returning: dict.admin.methodReturning,
+    "otp-email": dict.admin.methodOtpEmail,
+    "otp-sms": dict.admin.methodOtpSms,
+    google: "Google",
+    microsoft: "Microsoft",
+  };
+  const methodMap = new Map<string, number>();
+  for (const r of recent) {
+    const lbl = methodLabels[r.authMethod] ?? r.authMethod;
+    methodMap.set(lbl, (methodMap.get(lbl) ?? 0) + 1);
+  }
+  const methodData = entriesToTopN(methodMap, 7);
+
   // ----- 1.6 Fingerprint analytics -----
   const fpToCpfs = new Map<string, Set<string>>();
   const cpfToFps = new Map<string, Set<string>>();
@@ -237,9 +257,9 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
   for (const r of recent) {
     if (!r.fingerprint) continue;
     if (!fpToCpfs.has(r.fingerprint)) fpToCpfs.set(r.fingerprint, new Set());
-    fpToCpfs.get(r.fingerprint)!.add(r.cpf);
-    if (!cpfToFps.has(r.cpf)) cpfToFps.set(r.cpf, new Set());
-    cpfToFps.get(r.cpf)!.add(r.fingerprint);
+    fpToCpfs.get(r.fingerprint)!.add(r.visitorKey);
+    if (!cpfToFps.has(r.visitorKey)) cpfToFps.set(r.visitorKey, new Set());
+    cpfToFps.get(r.visitorKey)!.add(r.fingerprint);
     fpSessions.set(r.fingerprint, (fpSessions.get(r.fingerprint) ?? 0) + 1);
   }
   const uniqueFp = fpToCpfs.size;
@@ -343,6 +363,7 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     osData,
     browserData,
     deviceData,
+    methodData,
     uaSamples,
     uniqueFp,
     avgFpPerCpf,
@@ -490,7 +511,7 @@ export default async function AdminDashboard({
                     >
                       <div className="min-w-0 flex-1">
                         <div className="truncate font-medium">{c.fullName}</div>
-                        <div className="font-mono text-[11px] text-muted-foreground">{maskCpf(c.cpf)}</div>
+                        <div className="font-mono text-[11px] text-muted-foreground">{maskVisitorKey(c.cpf)}</div>
                       </div>
                       <div className="text-right">
                         <div className="font-medium">{formatBytes(c.totalBytes, locale)}</div>
@@ -506,6 +527,21 @@ export default async function AdminDashboard({
           </Card>
         </div>
       </section>
+
+      {/* Formas de acesso */}
+      {data.methodData.length > 1 && (
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">{dict.admin.dashMethodsTitle}</h2>
+            <p className="text-sm text-muted-foreground">{dict.admin.dashMethodsDesc}</p>
+          </div>
+          <Card className="max-w-md">
+            <CardContent className="pt-6">
+              <DeviceBreakdownPie data={data.methodData} />
+            </CardContent>
+          </Card>
+        </section>
+      )}
 
       {/* 1.5 Dispositivos */}
       {data.uaSamples > 0 && (
@@ -613,7 +649,7 @@ export default async function AdminDashboard({
                                     key={c}
                                     className="rounded bg-amber-100 px-1.5 py-0.5 font-mono text-[10px] text-amber-900 dark:bg-amber-900/30 dark:text-amber-200"
                                   >
-                                    {maskCpf(c)}
+                                    {maskVisitorKey(c)}
                                   </span>
                                 ))}
                               </div>

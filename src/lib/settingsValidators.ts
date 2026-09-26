@@ -26,6 +26,15 @@ const imageUrlSchema = z
 const optionalImageUrl = z
   .preprocess((v) => (v === null || v === undefined ? "" : v), imageUrlSchema);
 
+const fieldMode = z.enum(["required", "optional", "hidden"]).optional();
+
+function nullableInt(min: number, max: number) {
+  return z.preprocess(
+    (v) => (v === "" || v === undefined ? null : v),
+    z.coerce.number().int().min(min).max(max).nullable(),
+  ).optional();
+}
+
 export const settingsSchema = z.object({
   brandName: z.string().trim().min(1).max(120),
   logoUrl: optionalImageUrl,
@@ -37,6 +46,34 @@ export const settingsSchema = z.object({
   termsOfUse: z.string().max(8000),
   requireToken: z.boolean().optional(),
   singleDeviceByCpf: z.boolean().optional(),
+  // Perfil padrão de acesso (sem token). null = usa GUEST_* do .env; 0 = sem limite.
+  defaultDurationMin: nullableInt(1, 43200),
+  defaultDownKbps: nullableInt(0, 10_000_000),
+  defaultUpKbps: nullableInt(0, 10_000_000),
+  defaultQuotaMB: nullableInt(0, 10_000_000),
+  // Formulário do portal
+  fieldName: fieldMode,
+  fieldEmail: fieldMode,
+  fieldPhone: fieldMode,
+  fieldDocument: fieldMode,
+  allowForeignDocument: z.boolean().optional(),
+  rememberDeviceDays: z.coerce.number().int().min(0).max(365).optional(),
 });
+
+/** Sobrescritas de marca de um site. Campo vazio/nulo = herda da marca global. */
+export const siteBrandingSchema = z.object({
+  brandName: z.string().trim().max(120).nullish().transform((v) => v || null),
+  logoUrl: optionalImageUrl.transform((v) => v || null),
+  backgroundUrl: optionalImageUrl.transform((v) => v || null),
+  primaryColor: z
+    .string()
+    .trim()
+    .nullish()
+    .transform((v) => v || null)
+    .refine((v) => v === null || HEX_COLOR.test(v), "Cor deve ser hex como #1a2b3c"),
+  termsOfUse: z.string().max(8000).nullish().transform((v) => (v && v.trim() ? v : null)),
+});
+
+export type SiteBrandingInput = z.infer<typeof siteBrandingSchema>;
 
 export type SettingsInput = z.infer<typeof settingsSchema>;

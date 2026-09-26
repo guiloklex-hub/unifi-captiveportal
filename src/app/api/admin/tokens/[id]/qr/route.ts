@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { prisma } from "@/lib/prisma";
+import { portalBaseUrl, tokenDeepLink } from "@/lib/portalUrl";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
-
-function buildPortalBase(req: NextRequest): string {
-  const envBase = process.env.PUBLIC_PORTAL_URL?.trim();
-  if (envBase) return envBase.replace(/\/+$/, "");
-  const proto = req.headers.get("x-forwarded-proto") ?? "http";
-  const host = req.headers.get("host") ?? "localhost";
-  return `${proto}://${host}`;
-}
 
 export async function GET(req: NextRequest, { params }: Params) {
   const { id } = await params;
@@ -25,10 +18,7 @@ export async function GET(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: "Token não encontrado" }, { status: 404 });
   }
 
-  const base = buildPortalBase(req);
-  const site = encodeURIComponent(token.site || "default");
-  const code = encodeURIComponent(token.code);
-  const deepLink = `${base}/guest/s/${site}?token=${code}`;
+  const deepLink = tokenDeepLink(portalBaseUrl(req.headers), token);
 
   const format = (new URL(req.url).searchParams.get("format") ?? "svg").toLowerCase();
 

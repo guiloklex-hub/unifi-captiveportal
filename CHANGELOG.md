@@ -6,6 +6,14 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Formas de acesso opcionais** (Customização), todas desligadas por padrão:
+  formulário configurável (obrigatório/opcional/não pedir por campo), **acesso rápido** (só termos),
+  **estrangeiros sem CPF** (passaporte + telefone internacional), **convidado recorrente** (reconexão em 1 clique),
+  **perfil padrão de acesso** editável no painel, **marca por site** e **pré-visualização do portal**.
+- **Vouchers em lote** (até 500) com **folha de impressão A4** (QR code, código, tempo, validade e rede).
+- Busca do MAC pelo IP do cliente quando o portal é aberto sem `?id=` (QR code lido pela câmera).
+- Dashboard: gráfico "Formas de acesso"; visitantes únicos por chave de visitante (CPF → documento → e-mail → MAC).
+- Logs/CSV: documento estrangeiro e forma de acesso; busca por documento e MAC.
 - **Conexão UniFi por API Key** (API oficial *Integration API*, Network 9+) — sem usuário/senha, sessão ou CSRF.
   Modos `UNIFI_AUTH_MODE=auto|apikey|password`; no `auto`, fallback automático
   API oficial → API legada com API Key → API legada com usuário/senha.
@@ -21,6 +29,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Configuração do Dependabot para npm e GitHub Actions.
 
 ### Alterado
+- Fluxo de liberação unificado em `src/lib/portal/grantAccess.ts` (formulário, recorrente e, na sequência, OTP/login social).
 - Cliente UniFi reorganizado em `src/lib/unifi/` (config, transporte, API legada, API oficial, fachada).
   Sessão, circuit breaker e caches agora são únicos por processo (antes cada rota do Next tinha os seus).
 - **Retenção padrão de logs: 365 dias** (Marco Civil da Internet, art. 13). Antes: 180.
@@ -36,6 +45,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
 ### Corrigido
+- Logo com URL externa quebrava o portal (`next/image` sem `remotePatterns`).
+- O QR code do token abria o portal sem MAC ("Acesso indisponível").
 - "Dispositivos online agora" contava guests expirados/não autorizados.
 - Falhas de configuração/credencial da controladora mostram ao guest "serviço indisponível" (antes: erro genérico).
 - **Multi-site**: o site do caminho `/guest/s/<site>/` enviado pela controladora era descartado — todo guest era

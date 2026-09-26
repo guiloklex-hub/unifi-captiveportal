@@ -40,27 +40,41 @@ export async function POST(req: NextRequest) {
 
   const singleDeviceByCpf = Boolean(data.singleDeviceByCpf);
 
+  // Campos novos são opcionais no payload: ausente = mantém o valor atual.
+  const optional = Object.fromEntries(
+    (
+      [
+        "defaultDurationMin",
+        "defaultDownKbps",
+        "defaultUpKbps",
+        "defaultQuotaMB",
+        "fieldName",
+        "fieldEmail",
+        "fieldPhone",
+        "fieldDocument",
+        "allowForeignDocument",
+        "rememberDeviceDays",
+      ] as const
+    )
+      .filter((k) => data[k] !== undefined)
+      .map((k) => [k, data[k]]),
+  );
+
+  const fields = {
+    brandName: data.brandName,
+    logoUrl,
+    backgroundUrl,
+    primaryColor: data.primaryColor,
+    termsOfUse: data.termsOfUse,
+    requireToken: requireTokenFinal,
+    singleDeviceByCpf,
+    ...optional,
+  };
+
   const settings = await prisma.systemSettings.upsert({
     where: { id: "config" },
-    update: {
-      brandName: data.brandName,
-      logoUrl,
-      backgroundUrl,
-      primaryColor: data.primaryColor,
-      termsOfUse: data.termsOfUse,
-      requireToken: requireTokenFinal,
-      singleDeviceByCpf,
-    },
-    create: {
-      id: "config",
-      brandName: data.brandName,
-      logoUrl,
-      backgroundUrl,
-      primaryColor: data.primaryColor,
-      termsOfUse: data.termsOfUse,
-      requireToken: requireTokenFinal,
-      singleDeviceByCpf,
-    },
+    update: fields,
+    create: { id: "config", ...fields },
   });
   invalidateSystemSettingsCache();
 

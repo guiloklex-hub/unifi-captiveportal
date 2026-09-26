@@ -1,42 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
-import { authorizeGuest, UniFiClientError } from "@/lib/unifi";
 import { getGuestRegistrationSchema } from "@/lib/validators";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
-import { logger } from "@/lib/logger";
-import { rateLimit, clientIp } from "@/lib/rateLimit";
+import { clientIp } from "@/lib/rateLimit";
 import { getSystemSettings } from "@/lib/settings";
-import { findActiveCpfOnOtherDevice } from "@/lib/cpfLock";
-import { sanitizeGuestRedirect } from "@/lib/safeRedirect";
-import {
-  validateTokenForUse,
-  reserveTokenUse,
-  releaseTokenUse,
-  TokenInvalidError,
-  TokenExpiredError,
-  TokenRevokedError,
-  TokenExhaustedError,
-  TokenUnavailableError,
-} from "@/lib/tokens";
+import { grantGuestAccess } from "@/lib/portal/grantAccess";
+import { portalRateLimit } from "@/lib/portal/rateLimit";
 
 export const runtime = "nodejs";
 
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW_MS = 60_000;
-// Teto global de segurança (todas as origens somadas) — protege a controladora
-// de rajadas sem penalizar eventos com muitos guests simultâneos.
-const RATE_LIMIT_GLOBAL_MAX = 600;
-
 export async function POST(req: NextRequest) {
-  const locale = getLocale(req.headers.get("accept-language"));
-  const dict = dictionaries[locale];
+  const dict = dictionaries[getLocale(req.headers.get("accept-language"))];
   const settings = await getSystemSettings();
-  const schema = getGuestRegistrationSchema(dict.validation, {
-    requireToken: settings.requireToken,
-  });
-
-  const ip = clientIp(req.headers);
 
   let body: unknown;
   try {
@@ -45,236 +20,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: dict.portal.errInvalidData }, { status: 400 });
   }
 
-  // Why: sem proxy reverso (Node direto na porta 80, como no guia de instalação)
-  // não há cabeçalho com o IP do cliente e `clientIp` devolve "unknown" — todos
-  // os guests caíam no MESMO bucket (10/min no total). Nesse caso a chave passa
-  // a ser o MAC informado pela controladora.
-  const rawMac = typeof (body as { mac?: unknown })?.mac === "string"
-    ? (body as { mac: string }).mac.trim().toLowerCase()
-    : "";
-  const rlKey = ip !== "unknown" ? `ip:${ip}` : `mac:${rawMac || "none"}`;
-  const rl = rateLimit(`authorize:${rlKey}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
-  const rlGlobal = rateLimit("authorize:global", RATE_LIMIT_GLOBAL_MAX, RATE_LIMIT_WINDOW_MS);
-  if (!rl.allowed || !rlGlobal.allowed) {
-    const resetAt = !rl.allowed ? rl.resetAt : rlGlobal.resetAt;
-    logger.warn({ key: rlKey, global: !rlGlobal.allowed, resetAt }, "authorize rate-limited");
-    return NextResponse.json(
-      { error: dict.portal.errRateLimited },
-      { status: 429, headers: { "Retry-After": String(Math.ceil((resetAt - Date.now()) / 1000)) } },
-    );
-  }
+  const ip = clientIp(req.headers);
+  const limited = portalRateLimit("authorize", ip, body, dict);
+  if (limited) return limited;
 
-  const parsed = schema.safeParse(body);
+  const parsed = getGuestRegistrationSchema(dict.validation, settings).safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: dict.portal.errInvalidData, issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }
-
   const data = parsed.data;
-  let minutes = parseInt(process.env.GUEST_DURATION_MIN ?? "480", 10);
-  let downKbps: number | undefined =
-    parseInt(process.env.GUEST_DOWN_KBPS ?? "0", 10) || undefined;
-  let upKbps: number | undefined =
-    parseInt(process.env.GUEST_UP_KBPS ?? "0", 10) || undefined;
-  let bytesQuotaMB: number | undefined;
-  let unifiSite: string | null = data.site ?? null;
 
-  const userAgent = req.headers.get("user-agent") ?? undefined;
-  const ipAddress = ip !== "unknown" ? ip : undefined;
-  const fingerprint = data.fingerprint ?? undefined;
-
-  const mac = data.mac.toLowerCase();
-  // Why: YYYY-MM-DD na timezone BRT — sem isso, guests autorizando próximos
-  // de 00:00 BRT criariam dois registros por dia (23:59 BRT vs 00:01 BRT)
-  // porque o `toISOString()` usa UTC e a diferença é de 3 horas.
-  const authDate = new Intl.DateTimeFormat("sv-SE", {
-    timeZone: "America/Sao_Paulo",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(new Date());
-  const log = logger.child({ mac, ssid: data.ssid, ip: ipAddress });
-
-  // Validação e reserva de token (apenas quando exigido pelo SystemSettings).
-  let tokenId: string | null = null;
-  let tokenReserved = false;
-  if (settings.requireToken) {
-    try {
-      const token = await validateTokenForUse(data.token ?? "");
-      tokenId = token.id;
-      minutes = token.durationMin;
-      downKbps = token.downKbps ?? undefined;
-      upKbps = token.upKbps ?? undefined;
-      bytesQuotaMB = token.bytesQuotaMB ?? undefined;
-      // Token vinculado a site específico tem precedência sobre o site da URL UniFi.
-      if (token.site && token.site.trim()) unifiSite = token.site;
-
-      // Sinal de possível reuso fraudulento: mesmo MAC com fingerprint
-      // diferente de uso anterior do mesmo token. Apenas registra em log.
-      if (fingerprint) {
-        const priorWithDiffFp = await prisma.guestRegistration.findFirst({
-          where: {
-            tokenId: token.id,
-            macAddress: mac,
-            AND: [
-              { fingerprint: { not: null } },
-              { fingerprint: { not: fingerprint } },
-            ],
-          },
-          select: { id: true },
-        });
-        if (priorWithDiffFp) {
-          log.warn(
-            { tokenId: token.id },
-            "Fingerprint mismatch on same MAC+token — possible MAC spoofing",
-          );
-        }
-      }
-
-      // Idempotência: se este mesmo MAC já consumiu este token hoje (refresh
-      // do navegador, retentativa após queda de rede, etc.), não incrementa
-      // usedCount de novo — apenas re-autoriza na UniFi com os mesmos limites.
-      const existing = await prisma.guestRegistration.findUnique({
-        where: { macAddress_authDate: { macAddress: mac, authDate } },
-        select: { tokenId: true },
-      });
-      const alreadyConsumed = existing?.tokenId === token.id;
-
-      if (!alreadyConsumed) {
-        await reserveTokenUse(token.id);
-        tokenReserved = true;
-        // Marca primeiro uso (idempotente: só seta se ainda for null).
-        await prisma.accessToken.updateMany({
-          where: { id: token.id, firstUsedAt: null },
-          data: { firstUsedAt: new Date() },
-        }).catch(() => undefined);
-      } else {
-        log.info({ tokenId: token.id }, "Token reuse by same MAC/day — skipping reserve");
-      }
-    } catch (err) {
-      const map = new Map<string, string>([
-        [TokenInvalidError.name, dict.validation.valTokenInvalid],
-        [TokenExpiredError.name, dict.validation.valTokenExpired],
-        [TokenRevokedError.name, dict.validation.valTokenRevoked],
-        [TokenExhaustedError.name, dict.validation.valTokenExhausted],
-        [TokenUnavailableError.name, dict.validation.valTokenExhausted],
-      ]);
-      if (err instanceof Error && map.has(err.name)) {
-        log.info({ tokenError: err.name }, "Token validation failed");
-        return NextResponse.json({ error: map.get(err.name) }, { status: 400 });
-      }
-      throw err;
-    }
-  }
-
-  // Bloqueio de CPF multi-device — só aplica quando a flag está ativa E não
-  // houve reserva de token. Token válido bypassa o bloqueio por decisão de
-  // produto (o admin já controla o acesso via emissão do token).
-  if (settings.singleDeviceByCpf && !tokenReserved) {
-    const conflict = await findActiveCpfOnOtherDevice(data.cpf, mac);
-    if (conflict) {
-      log.info(
-        { conflictMac: conflict.macAddress, conflictId: conflict.id },
-        "CPF blocked: active session on other MAC",
-      );
-      return NextResponse.json(
-        { error: dict.validation.valCpfAlreadyActive },
-        { status: 409 },
-      );
-    }
-  }
-
-  // Autoriza na UniFi. Se falhar e havia token reservado, libera o uso.
-  try {
-    await authorizeGuest({
-      mac,
-      minutes,
-      downKbps,
-      upKbps,
-      bytesQuotaMB,
-      apMac: data.apMac ?? null,
-      site: unifiSite,
-    });
-  } catch (err) {
-    if (tokenReserved && tokenId) {
-      await releaseTokenUse(tokenId).catch((e) =>
-        log.error({ err: (e as Error).message }, "Failed to release token use after UniFi failure"),
-      );
-    }
-    const message = err instanceof Error ? err.message : "Erro desconhecido";
-    // Qualquer erro que não seja "payload recusado" é indisponibilidade do nosso
-    // lado (rede, circuito aberto, credencial/configuração inválida).
-    const isDown = !(err instanceof UniFiClientError);
-    log.error({ err: message, isDown }, "UniFi authorize failed");
-    // Detalhes da controladora (paths, respostas) ficam só no log — não vazam ao guest.
-    return NextResponse.json(
-      { error: isDown ? dict.portal.errServiceUnavailable : dict.portal.errAuthorizeFailed },
-      { status: 502 },
-    );
-  }
-
-  // Gravação/atualização idempotente por (mac, dia) após autorização bem-sucedida.
-  let createdId: number | null = null;
-  try {
-    const record = await prisma.guestRegistration.upsert({
-      where: { macAddress_authDate: { macAddress: mac, authDate } },
-      create: {
+  const result = await grantGuestAccess(
+    {
+      identity: {
         fullName: data.fullName,
         email: data.email,
         phone: data.phone,
         cpf: data.cpf,
-        macAddress: mac,
-        authDate,
-        apMac: data.apMac ?? null,
-        ssid: data.ssid ?? null,
-        site: unifiSite,
-        userAgent,
-        ipAddress,
-        fingerprint,
-        durationMin: minutes,
-        downKbps,
-        upKbps,
-        bytesQuotaMB,
-        tokenId,
+        documentType: data.documentType,
+        document: data.document,
       },
-      update: {
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        cpf: data.cpf,
-        apMac: data.apMac ?? null,
-        ssid: data.ssid ?? null,
-        site: unifiSite,
-        userAgent,
-        ipAddress,
-        fingerprint,
-        durationMin: minutes,
-        downKbps,
-        upKbps,
-        bytesQuotaMB,
-        tokenId,
-        authorizedAt: new Date(),
-      },
-    });
-    createdId = record.id;
-  } catch (err) {
-    // Autorizou na UniFi mas falhou no banco: não é bloqueante para o guest,
-    // mas registramos para reconciliação posterior.
-    log.error({ err: (err as Error).message }, "DB persist failed after UniFi authorize");
-    return NextResponse.json({
-      ok: true,
-      id: null,
-      redirect: sanitizeGuestRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
-    });
-  }
+      mac: data.mac,
+      apMac: data.apMac,
+      ssid: data.ssid,
+      site: data.site,
+      originalUrl: data.originalUrl,
+      fingerprint: data.fingerprint ?? null,
+      userAgent: req.headers.get("user-agent") ?? undefined,
+      ipAddress: ip !== "unknown" ? ip : undefined,
+      token: data.token,
+      authMethod: "form",
+    },
+    settings,
+    dict,
+  );
 
-  log.info({ id: createdId, tokenId }, "Guest authorized");
-
-  return NextResponse.json({
-    ok: true,
-    id: createdId,
-    redirect: sanitizeGuestRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
-  });
+  if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
+  return NextResponse.json({ ok: true, id: result.id, redirect: result.redirect });
 }

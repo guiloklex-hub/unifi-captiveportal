@@ -11,6 +11,8 @@ export const createTokenSchema = z.object({
     message: "Data de expiração deve ser futura",
   }),
   site: z.string().trim().min(1).max(64).optional().or(z.literal("").transform(() => undefined)),
+  /** Vouchers em lote: quantos tokens idênticos criar (mesmo batchId). */
+  quantity: z.coerce.number().int().min(1).max(500).default(1),
 });
 
 export const extendTokenSchema = z.object({

@@ -284,6 +284,16 @@ export async function legacyListGuests(cfg: UniFiConfig, site: string, auth: Leg
   return res.data ?? [];
 }
 
+export async function legacyFindMacByIp(
+  cfg: UniFiConfig,
+  site: string,
+  ip: string,
+  auth: LegacyAuth,
+): Promise<string | null> {
+  const res = await legacyRequest<{ data?: { mac: string; ip?: string }[] }>(cfg, `/api/s/${site}/stat/sta`, {}, auth);
+  return res.data?.find((c) => c.ip === ip)?.mac.toLowerCase() ?? null;
+}
+
 export async function legacyListSites(cfg: UniFiConfig, auth: LegacyAuth): Promise<UniFiSite[]> {
   const res = await legacyRequest<{ data?: { name: string; desc?: string; _id?: string }[] }>(
     cfg,

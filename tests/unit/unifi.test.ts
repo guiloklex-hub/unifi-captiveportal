@@ -173,6 +173,19 @@ describe("UniFi OS sem API oficial (Network < 9.3)", () => {
   });
 });
 
+describe("findClientMacByIp", () => {
+  it("encontra o MAC pela API legada", async () => {
+    await setup({ variant: "classic", username: "api", password: "pw" }, { UNIFI_USERNAME: "api", UNIFI_PASSWORD: "pw" });
+    expect(await unifi.findClientMacByIp("10.0.0.10")).toBe("aa:bb:cc:dd:ee:ff");
+    expect(await unifi.findClientMacByIp("10.0.0.99")).toBeNull();
+  });
+
+  it("encontra o MAC pela API oficial", async () => {
+    await setup({ variant: "unifi-os", apiKey: "chave", integration: true }, { UNIFI_API_KEY: "chave" });
+    expect(await unifi.findClientMacByIp("10.0.0.10")).toBe("aa:bb:cc:dd:ee:ff");
+  });
+});
+
 describe("diagnoseUniFi", () => {
   it("reporta variante, versão, sites e estratégia ativa", async () => {
     await setup(
