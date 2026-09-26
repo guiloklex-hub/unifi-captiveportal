@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { deriveStatus } from "@/lib/tokens";
@@ -74,6 +75,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       where: { id },
       data: { revokedAt: new Date() },
     });
+    await audit(req, "token.revoke", existing.code, { cascade: Boolean(body.cascade), disconnect });
     return NextResponse.json({
       ...updated,
       status: deriveStatus(updated),
@@ -106,13 +108,14 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       data.maxUses = existing.maxUses + parsed.data.addUses;
     }
     const updated = await prisma.accessToken.update({ where: { id }, data });
+    await audit(req, "token.extend", existing.code, { expiresAt: data.expiresAt, maxUses: data.maxUses });
     return NextResponse.json({ ...updated, status: deriveStatus(updated) });
   }
 
   return NextResponse.json({ error: "Ação inválida" }, { status: 400 });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const { id } = await params;
   const existing = await prisma.accessToken.findUnique({ where: { id } });
   if (!existing) {
@@ -125,5 +128,6 @@ export async function DELETE(_req: NextRequest, { params }: Params) {
     );
   }
   await prisma.accessToken.delete({ where: { id } });
+  await audit(req, "token.delete", existing.code);
   return NextResponse.json({ ok: true });
 }

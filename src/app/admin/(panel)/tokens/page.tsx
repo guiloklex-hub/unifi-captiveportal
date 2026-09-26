@@ -33,6 +33,7 @@ type TokenRow = {
   revokedAt: string | null;
   createdAt: string;
   site: string;
+  batchId: string | null;
   status: TokenStatus;
 };
 
@@ -72,6 +73,7 @@ export default function TokensPage() {
 
   const [showForm, setShowForm] = useState(false);
   const [createdToken, setCreatedToken] = useState<TokenRow | null>(null);
+  const [createdBatch, setCreatedBatch] = useState<{ batchId: string; count: number } | null>(null);
   const [copyMsg, setCopyMsg] = useState<string | null>(null);
 
   const [form, setForm] = useState({
@@ -81,6 +83,7 @@ export default function TokensPage() {
     upKbps: "",
     bytesQuotaMB: "",
     maxUses: 1,
+    quantity: 1,
     site: "default",
     expirationMode: "relative" as "relative" | "absolute",
     relativeMin: 1440,
@@ -151,6 +154,7 @@ export default function TokensPage() {
         maxUses: Number(form.maxUses),
         site: form.site.trim() || "default",
         expiresAt,
+        quantity: Number(form.quantity) || 1,
       };
 
       const res = await fetch("/api/admin/tokens", {
@@ -163,9 +167,15 @@ export default function TokensPage() {
         setFormError(data?.error ?? "Erro ao criar token");
         return;
       }
-      setCreatedToken(data);
+      if (data?.batchId) {
+        setCreatedBatch({ batchId: data.batchId, count: data.count });
+        setCreatedToken(null);
+      } else {
+        setCreatedToken(data);
+        setCreatedBatch(null);
+      }
       setShowForm(false);
-      setForm({ ...form, description: "", downKbps: "", upKbps: "", bytesQuotaMB: "", maxUses: 1 });
+      setForm({ ...form, description: "", downKbps: "", upKbps: "", bytesQuotaMB: "", maxUses: 1, quantity: 1 });
       fetchRows();
     } catch {
       setFormError(dict.admin.connError);
@@ -246,10 +256,26 @@ export default function TokensPage() {
           <h1 className="text-2xl font-bold">{dict.admin.tokensTitle}</h1>
           <p className="text-sm text-muted-foreground">{dict.admin.tokensDesc}</p>
         </div>
-        <Button onClick={() => { setShowForm(!showForm); setCreatedToken(null); }}>
+        <Button onClick={() => { setShowForm(!showForm); setCreatedToken(null); setCreatedBatch(null); }}>
           {showForm ? dict.admin.cancelBtn : dict.admin.newTokenBtn}
         </Button>
       </div>
+
+      {createdBatch && (
+        <Card className="border-emerald-200 bg-emerald-50/50">
+          <CardHeader>
+            <CardTitle>{dict.admin.batchCreatedTitle.replace("{count}", String(createdBatch.count))}</CardTitle>
+            <CardDescription>{dict.admin.batchCreatedDesc}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <a href={`/admin/print/vouchers?batch=${createdBatch.batchId}`} target="_blank" rel="noopener noreferrer">
+                {dict.admin.printVouchersBtn}
+              </a>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {createdToken && (
         <Card className="border-emerald-200 bg-emerald-50/50">
@@ -266,6 +292,11 @@ export default function TokensPage() {
                 {copyMsg ?? dict.admin.copyBtn}
               </Button>
               <TokenQrDialog tokenId={createdToken.id} code={createdToken.code} dict={dict} />
+              <Button asChild variant="outline">
+                <a href={`/admin/print/vouchers?ids=${createdToken.id}`} target="_blank" rel="noopener noreferrer">
+                  {dict.admin.printBtn}
+                </a>
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -413,6 +444,19 @@ export default function TokensPage() {
                 {isLocked("expiresInMin") && <p className="text-xs text-amber-700">{dict.admin.lockedByEnv}</p>}
               </div>
 
+              <div className="space-y-1.5">
+                <Label htmlFor="quantity">{dict.admin.tokenQuantityLabel}</Label>
+                <Input
+                  id="quantity"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={form.quantity}
+                  onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
+                />
+                <p className="text-xs text-muted-foreground">{dict.admin.tokenQuantityHint}</p>
+              </div>
+
               {formError && (
                 <div className="md:col-span-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                   {formError}
@@ -505,6 +549,16 @@ export default function TokensPage() {
                       </td>
                       <td className="py-2 pr-3 text-right space-x-2 whitespace-nowrap">
                         <TokenQrDialog tokenId={t.id} code={t.code} dict={dict} />
+                        <Button asChild size="sm" variant="ghost">
+                          <a
+                            href={`/admin/print/vouchers?${t.batchId ? `batch=${t.batchId}` : `ids=${t.id}`}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={t.batchId ? dict.admin.printBatchHint : undefined}
+                          >
+                            {t.batchId ? dict.admin.printBatchBtn : dict.admin.printBtn}
+                          </a>
+                        </Button>
                         {!t.revokedAt && t.status !== "expired" && (
                           <Button size="sm" variant="ghost" onClick={() => extend(t.id)}>
                             {dict.admin.extendBtn}

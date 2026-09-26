@@ -157,6 +157,9 @@ export class MockUnifi {
     if (sub === "/api/self/sites") return this.json(res, 200, { data: [{ name: "default", desc: "Default", _id: "abc" }] });
     if (/^\/api\/s\/[^/]+\/stat\/sysinfo$/.test(sub)) return this.json(res, 200, { data: [{ version: this.opts.version ?? "10.1.89" }] });
     if (/^\/api\/s\/[^/]+\/stat\/guest$/.test(sub)) return this.json(res, 200, { data: this.guests });
+    if (/^\/api\/s\/[^/]+\/stat\/sta$/.test(sub)) {
+      return this.json(res, 200, { data: this.guests.map((gst) => ({ mac: gst.mac, ip: gst.ip })) });
+    }
     if (/^\/api\/s\/[^/]+\/stat\/device-basic$/.test(sub)) {
       return this.json(res, 200, { data: [{ mac: "11:22:33:44:55:66", name: "AP Recepção", model: "U7PG2" }] });
     }

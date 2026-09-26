@@ -6,6 +6,28 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **LGPD** (menu Privacidade): versão dos termos aceita por cadastro (hash + texto arquivado), consentimento de
+  marketing separado e opcional, exportação (JSON) e anonimização de dados por titular, retenção de dados pessoais
+  (`PII_RETENTION_DAYS`) separada do registro de conexão, mascaramento de PII para o papel "Somente leitura".
+  Convidado recorrente precisa aceitar de novo quando os termos mudam.
+- **Usuários do painel com papéis** (Administrador, Operador, Somente leitura), senhas com scrypt, bloqueio após
+  5 tentativas e **2FA TOTP** por usuário. RBAC aplicado no `proxy.ts` a páginas e APIs.
+- **Trilha de auditoria** de todas as ações administrativas, com filtro e exportação CSV.
+- **Bloqueios e liberações**: bloquear por MAC/CPF/e-mail/documento; liberar dispositivo (1 clique, sem cadastro);
+  **liberar agora** aparelhos sem navegador (TV, impressora); **estender** e **bloquear** direto na tela de Sessões.
+- **Verificação por código** (opcional) por **e-mail** (SMTP, com acesso provisório para ler o e-mail) ou **SMS**
+  (Twilio ou webhook genérico). Código de 6 dígitos, uso único, 10 min, 5 tentativas; guardado só como HMAC.
+- **Login social** (opcional) com **Google** e **Microsoft** (OAuth 2.0/OIDC + PKCE): nome e e-mail verificados
+  pelo provedor.
+- Limpeza diária também remove códigos e logins sociais com mais de 24 h.
+- **Formas de acesso opcionais** (Customização), todas desligadas por padrão:
+  formulário configurável (obrigatório/opcional/não pedir por campo), **acesso rápido** (só termos),
+  **estrangeiros sem CPF** (passaporte + telefone internacional), **convidado recorrente** (reconexão em 1 clique),
+  **perfil padrão de acesso** editável no painel, **marca por site** e **pré-visualização do portal**.
+- **Vouchers em lote** (até 500) com **folha de impressão A4** (QR code, código, tempo, validade e rede).
+- Busca do MAC pelo IP do cliente quando o portal é aberto sem `?id=` (QR code lido pela câmera).
+- Dashboard: gráfico "Formas de acesso"; visitantes únicos por chave de visitante (CPF → documento → e-mail → MAC).
+- Logs/CSV: documento estrangeiro e forma de acesso; busca por documento e MAC.
 - **Conexão UniFi por API Key** (API oficial *Integration API*, Network 9+) — sem usuário/senha, sessão ou CSRF.
   Modos `UNIFI_AUTH_MODE=auto|apikey|password`; no `auto`, fallback automático
   API oficial → API legada com API Key → API legada com usuário/senha.
@@ -21,6 +43,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Configuração do Dependabot para npm e GitHub Actions.
 
 ### Alterado
+- **Login do painel**: `ADMIN_PASSWORD` vira senha de primeiro acesso (bootstrap); após criar o primeiro usuário,
+  o login passa a ser por usuário e senha. `ADMIN_BREAK_GLASS=true` reabre o acesso de emergência.
+  Sessões abertas antes da atualização precisam entrar de novo (novo formato de token).
+- Logout apenas por `POST` (um `GET` permitia deslogar o admin via CSRF).
+- Fluxo de liberação unificado em `src/lib/portal/grantAccess.ts` (formulário, recorrente e, na sequência, OTP/login social).
 - Cliente UniFi reorganizado em `src/lib/unifi/` (config, transporte, API legada, API oficial, fachada).
   Sessão, circuit breaker e caches agora são únicos por processo (antes cada rota do Next tinha os seus).
 - **Retenção padrão de logs: 365 dias** (Marco Civil da Internet, art. 13). Antes: 180.
@@ -36,6 +63,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
 ### Corrigido
+- Logo com URL externa quebrava o portal (`next/image` sem `remotePatterns`).
+- O QR code do token abria o portal sem MAC ("Acesso indisponível").
 - "Dispositivos online agora" contava guests expirados/não autorizados.
 - Falhas de configuração/credencial da controladora mostram ao guest "serviço indisponível" (antes: erro genérico).
 - **Multi-site**: o site do caminho `/guest/s/<site>/` enviado pela controladora era descartado — todo guest era

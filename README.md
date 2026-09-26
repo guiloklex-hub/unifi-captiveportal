@@ -373,11 +373,15 @@ Todas ficam no arquivo `.env`.
 | `GUEST_DURATION_MIN` | Não | Duração padrão (minutos), usada quando guest autoriza sem token | `480` |
 | `GUEST_DOWN_KBPS` | Não | Limite de download padrão (Kbps) | `5120` |
 | `GUEST_UP_KBPS` | Não | Limite de upload padrão (Kbps) | `2048` |
+| `GUEST_QUOTA_MB` | Não | Cota de dados padrão (MB) | `1024` |
+| `PORTAL_MAC_LOOKUP` | Não | `false` desativa a busca do MAC pelo IP quando o portal é aberto sem `?id=` (ex.: QR code) | `true` |
 | `PORTAL_SUCCESS_URL` | Não | Redirect após autorização | `https://empresa.com.br` |
-| `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
+| `ADMIN_PASSWORD` | Sim* | Senha de **primeiro acesso** ao painel (antes de existir usuários) | `SenhaForte@2026` |
+| `ADMIN_BREAK_GLASS` | Não | `true` reabre o login por `ADMIN_PASSWORD` mesmo com usuários cadastrados (emergência — ex.: único admin perdeu o 2FA). Deixe desligado | `false` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
+| `PII_RETENTION_DAYS` | Não | Anonimiza nome/e-mail/telefone/documentos após N dias, mantendo o registro de conexão até `GUEST_RETENTION_DAYS`. Vazio = desligado | `90` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 | `PUBLIC_PORTAL_URL` | Não | URL pública (com protocolo) usada para gerar deep-links de QR de token. Se vazio, usa o `Host` da requisição admin — que pode ser interno (`127.0.0.1`) e inviável para escanear. | `https://wifi.empresa.com.br` |
 
@@ -579,10 +583,52 @@ Painel Admin → **Customização**:
 - **Logotipo** (upload local ou URL externa)
 - **Plano de fundo**
 - **Cor primária** (hex) — a cor do texto sobre botões é escolhida automaticamente (preto ou branco) para manter contraste legível.
-
-Uploads aceitam **PNG, JPEG, WebP ou GIF** até **5 MB**. O tipo é detectado pelo conteúdo do arquivo (SVG é recusado por poder conter script) e o nome é gerado pelo servidor. O diretório padrão é `public/uploads/`; use `UPLOAD_DIR` para apontar outro caminho (ex.: volume persistente).
 - **Termos de uso** (Markdown, modal otimizado para mobile)
 - **Exigir token de acesso** (toggle)
+
+Uploads aceitam **PNG, JPEG, WebP ou GIF** até **5 MB**. O tipo é detectado pelo conteúdo do arquivo (SVG é recusado por poder conter script) e o nome é gerado pelo servidor. O diretório padrão é `public/uploads/`; use `UPLOAD_DIR` para apontar outro caminho (ex.: volume persistente).
+
+### 8.1 Formas de acesso (todas opcionais)
+
+Tudo fica em **Customização** e vem **desligado/idêntico ao comportamento anterior** por padrão:
+
+| Recurso | Como ativar | O que faz |
+|---|---|---|
+| **Formulário configurável** | Nome, e-mail, celular e CPF/documento: *Obrigatório*, *Opcional* ou *Não pedir* | Coleta só o necessário (princípio da minimização da LGPD) |
+| **Acesso rápido** | Todos os campos em *Não pedir* | O convidado só aceita os termos |
+| **Estrangeiros sem CPF** | "Aceitar estrangeiros sem CPF" | Opção "Não tenho CPF": passaporte + telefone internacional (`+código do país`). Sugerida automaticamente quando o navegador não está em português |
+| **Convidado recorrente** | "Lembrar dispositivos por (dias)" > 0 | Quem já se cadastrou no aparelho reconecta com **um clique** ("Bem-vindo(a) de volta, Maria!"). Não vale quando o token é exigido nem se o admin revogou a última sessão. Só o primeiro nome é exibido (MAC pode ser clonado) |
+| **Perfil padrão de acesso** | Duração, download, upload e cota | Aplicado a quem entra sem token. Em branco = `GUEST_*` do `.env`; `0` = sem limite |
+| **Marca por site** | "Aplicar a: Somente o site X" | Nome, logo, fundo, cor e termos diferentes por site UniFi; campos em branco herdam a marca padrão |
+| **Pré-visualização** | Botão "Pré-visualizar portal" | Abre o portal como o convidado verá, com envio desativado |
+
+O dashboard ganhou o gráfico **Formas de acesso** e passa a contar visitantes únicos por uma *chave de visitante* (CPF → documento → e-mail → MAC), que funciona com qualquer configuração de formulário.
+
+### 8.2 Verificação por código e login social (opcionais)
+
+**Código de verificação** (Customização → Verificação e login social):
+- **Por e-mail** ou **por SMS**: ao enviar o formulário, o convidado recebe um código de 6 dígitos (válido por 10 min, até 5 tentativas, reenvio após 45 s). Só depois de digitar o código o acesso é liberado — a autorização direta passa a ser recusada.
+- **E-mail**: como o convidado ainda não tem internet, o portal libera um **acesso provisório** (padrão 10 min, banda reduzida, no máximo 2 por dispositivo/dia) para ele abrir a caixa de entrada. Configure SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`).
+- **SMS**: `SMS_PROVIDER=twilio` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`) ou `SMS_PROVIDER=webhook` (`SMS_WEBHOOK_URL` recebe `POST {"to":"+55…","message":"…"}`, com `SMS_WEBHOOK_TOKEN` opcional como Bearer) — o webhook permite usar qualquer gateway (Zenvia, Infobip, AWS SNS, WhatsApp via n8n/Make…).
+- O código nunca é gravado (só um HMAC dele) e vale uma única vez.
+
+**Login social** (Google e/ou Microsoft):
+- Nome e e-mail chegam **verificados pelo provedor** (dispensa o código); os demais campos obrigatórios (CPF, celular) continuam sendo pedidos.
+- Requisitos: `PUBLIC_PORTAL_URL` com **HTTPS** (os provedores não aceitam redirect HTTP), credenciais OAuth no `.env` (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`/`MICROSOFT_TENANT`) e o **URI de redirecionamento** `https://<seu-portal>/api/portal/oauth/callback` cadastrado no provedor (o painel mostra o valor exato).
+- Os domínios de login precisam estar no **walled garden** da UniFi (ponto de partida — confirme com o provedor, a lista muda):
+  - Google: `accounts.google.com`, `ssl.gstatic.com`, `www.gstatic.com`, `fonts.gstatic.com`, `apis.google.com`, `accounts.youtube.com`
+  - Microsoft: `login.microsoftonline.com`, `login.live.com`, `login.microsoft.com`, `aadcdn.msftauth.net`, `aadcdn.msauth.net`, `logincdn.msauth.net`
+- Fluxo OAuth 2.0 / OpenID Connect com **PKCE**, `state` e `nonce`; o ticket devolvido ao portal é de uso único e amarrado ao MAC.
+
+### 8.3 Vouchers impressos
+
+Em **Tokens → Novo token**, informe **Quantidade** (até 500) para criar um lote de tokens idênticos e clique em **Imprimir vouchers**: a folha A4 traz 8 cartões por página com QR code, código, tempo de acesso, validade e (opcional) o nome da rede Wi‑Fi. Lotes antigos podem ser reimpressos pelo botão **Imprimir lote** na lista.
+
+> **Por que não os vouchers nativos da UniFi?** Os vouchers do Hotspot da UniFi são validados pelo portal *interno* da controladora. Com portal externo (este projeto) não há API para validar/consumir um voucher UniFi — por isso o portal usa o próprio sistema de tokens, que tem os mesmos recursos (tempo, banda, cota, usos, validade) e ainda gera QR code.
+
+### 8.4 Portal aberto sem MAC (QR code)
+
+Quando o celular abre o link do QR code direto na câmera, a URL não traz o `?id=<MAC>` que a controladora injeta. O portal então procura o MAC na controladora **pelo IP do cliente** e segue normalmente. Requer proxy reverso que informe o IP real (`X-Real-IP` / `X-Forwarded-For`); desative com `PORTAL_MAC_LOOKUP=false`.
 
 ---
 
@@ -687,13 +733,27 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/portal/success` | GET | Tela de sucesso com detalhes da sessão |
 | `/api/portal/authorize` | POST | Valida token, autoriza UniFi, persiste guest. Rate-limit 10 req/min/IP |
 | `/api/portal/session/[id]` | GET | Detalhes não-PII da sessão (janela 5min) |
+| `/api/portal/reconnect` | POST | Reconexão em 1 clique de dispositivo reconhecido |
+| `/api/portal/otp/start` | POST | Valida o formulário e envia o código (e-mail/SMS) |
+| `/api/portal/otp/verify` | POST | Confere o código e libera o acesso |
+| `/api/portal/oauth/{google\|microsoft}/start` | GET | Inicia o login social |
+| `/api/portal/oauth/callback` | GET | Retorno do provedor (redirect URI) |
 
 ### Administrativos
 
 | Endpoint | Método | Descrição |
 |---|---|---|
-| `/api/admin/login` | POST | Login (gera cookie HMAC) |
+| `/api/admin/login` | POST | Login (usuário + senha; responde `mfaRequired` quando há 2FA) |
+| `/api/admin/login/mfa` | POST | Segundo fator (código TOTP) |
 | `/api/admin/logout` | POST | Logout |
+| `/api/admin/users` e `/api/admin/users/[id]` | GET/POST/PATCH/DELETE | Usuários do painel (admin) |
+| `/api/admin/account`, `/account/password`, `/account/totp` | GET/POST/PUT/DELETE | Conta logada: senha e 2FA |
+| `/api/admin/audit` | GET | Trilha de auditoria (JSON ou `?format=csv`) |
+| `/api/admin/privacy/subject` (+ `/export`, `/anonymize`) | GET/POST | LGPD: localizar, exportar (JSON) e anonimizar dados de um titular |
+| `/api/admin/privacy/terms` | GET | Versões dos termos aceitos e configuração de retenção |
+| `/api/admin/access-rules` e `/[id]` | GET/POST/DELETE | Bloqueios e liberações |
+| `/api/admin/guests/authorize` | POST | Liberar dispositivo agora (sem portal) |
+| `/api/admin/guests/extend` | POST | Estender sessão de um guest |
 | `/api/admin/settings` | GET/POST | Branding + toggle requireToken |
 | `/api/admin/logs` | GET | Listagem paginada + CSV (inclui token) |
 | `/api/admin/guests/active` | GET | Sessões UniFi ativas |
@@ -707,6 +767,8 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/api/admin/dns-logs` | GET | Atividade DNS via AdGuard Home |
 | `/api/admin/upload` | POST | Upload de imagens (logo/background) |
 | `/api/admin/unifi/connection` | GET/PUT/DELETE | Conexão UniFi salva no painel (segredos nunca retornam) |
+| `/api/admin/branding/[site]` | GET/PUT/DELETE | Marca por site (campos nulos herdam a marca padrão) |
+| `/admin/print/vouchers?batch=` | GET | Folha de impressão de vouchers (página) |
 | `/api/admin/unifi/test` | POST | Diagnóstico da conexão (configuração atual ou rascunho do formulário) |
 | `/api/admin/sites` | GET | Sites para filtros (banco ∪ controladora) |
 
@@ -756,9 +818,23 @@ npx prisma studio    # abre UI em http://localhost:5555
 
 ## 15. LGPD e segurança
 
-- **Termos de uso**: modal com rolagem; aceite registrado por guest.
-- **Mínimo necessário**: a tela de sucesso lê via endpoint dedicado que **não devolve** CPF, e-mail, telefone — apenas duração, banda, quota, SSID.
-- **Tokens em texto plano no DB**: aceito como tradeoff (curta validade, baixo blast radius). Recomenda-se cifrar o disco do servidor.
+### 15.0 Privacidade (LGPD) — menu **Privacidade (LGPD)**, só admin
+
+- **Minimização**: formulário configurável (só pedir o necessário) — seção **8.1**.
+- **Consentimento com prova**: cada cadastro guarda o **hash SHA-256 da versão dos termos** aceita; o texto de cada versão fica arquivado (tabela `TermsVersion`) e pode ser consultado no painel. Se os termos mudarem, o convidado recorrente precisa aceitar de novo.
+- **Consentimento de marketing separado** (opcional, desmarcado por padrão, texto editável em Customização) — gravado por cadastro e exportado no CSV.
+- **Direitos do titular** (art. 18): localizar os dados por CPF, e-mail, documento ou telefone; **exportar** tudo em JSON (acesso/portabilidade, com as versões dos termos aceitos) e **anonimizar** (eliminação). Ambas as ações vão para a auditoria.
+- **Retenção em dois níveis**: `PII_RETENTION_DAYS` anonimiza os dados pessoais antes; `GUEST_RETENTION_DAYS` (padrão 365 — Marco Civil, art. 13) apaga o registro de conexão (MAC, IP, horários). A anonimização mantém o registro de conexão.
+- **Mínimo necessário para quem só consulta**: o papel "Somente leitura" recebe CPF, e-mail, telefone e documento **mascarados** (tela e CSV).
+- A tela de sucesso lê um endpoint que **não devolve** CPF, e-mail ou telefone.
+
+> **Criptografia de CPF no banco**: não foi adotada criptografia por coluna — ela impediria as buscas/índices usados no bloqueio de CPF, na busca de logs e no BI, e a perda da chave tornaria os dados irrecuperáveis. A proteção adotada é: anonimização por prazo, mascaramento por papel, auditoria e controle de acesso. **Recomendado**: disco cifrado (LUKS/BitLocker) e backups cifrados. Segredos (senha/API Key da UniFi, 2FA) **são** cifrados com AES-256-GCM.
+>
+> Este projeto oferece ferramentas; a adequação à LGPD (base legal, aviso de privacidade, encarregado/DPO) é responsabilidade do controlador — revise os termos de uso com seu jurídico.
+
+### 15.0.1 Segurança geral
+
+- **Tokens em texto plano no DB**: aceito como tradeoff (curta validade, baixo blast radius).
 - **HMAC** assina o cookie de sessão admin (TTL 12h, `httpOnly`, `sameSite=lax`).
 - **Rate limit**: 10 req/min por IP em `/api/portal/authorize` (quando não há proxy reverso informando o IP, a chave passa a ser o MAC do dispositivo) + teto global de 600 req/min.
 - **Cabeçalhos de segurança** em todas as rotas: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.
@@ -766,12 +842,28 @@ npx prisma studio    # abre UI em http://localhost:5555
 
 ### 15.1 Proteção do painel admin
 
-O middleware [src/proxy.ts](src/proxy.ts) protege **tanto as páginas** (`/admin/*`) **quanto as APIs** (`/api/admin/*`):
+**Usuários, papéis e 2FA** (menu **Usuários** e **Minha conta**):
 
-- Sem cookie de sessão válido, páginas redirecionam para `/admin/login` e APIs respondem `401`.
-- Allowlist explícita: `/admin/login`, `/api/admin/login`, `/admin/logout`, `/api/admin/logout`.
-- Bypass por header `Authorization: Bearer ${CRON_SECRET}` é aceito **somente quando `CRON_SECRET` está definido com ≥ 16 caracteres**. Comparação em constant-time evita timing attack.
-- `POST /api/admin/login` tem rate limit de **5 tentativas por minuto por IP** e usa mensagem genérica (`Credenciais inválidas`) para senha errada e rate-limit, evitando enumeração.
+| Papel | Pode |
+|---|---|
+| **Administrador** | Tudo, inclusive Usuários, Auditoria, Conexão UniFi e Customização |
+| **Operador** | Operação do dia a dia: tokens/vouchers, sessões (desconectar, estender, bloquear), bloqueios e liberações, logs, reconciliação |
+| **Somente leitura** | Consultar dashboard, logs, sessões e tokens (apenas `GET`) |
+
+- **Primeiro acesso / atualização de versões antigas**: entre com usuário vazio (ou `admin`) e a senha `ADMIN_PASSWORD`, abra **Usuários** e crie o primeiro administrador. A partir daí o login por `ADMIN_PASSWORD` é desativado (a menos que `ADMIN_BREAK_GLASS=true`).
+- Senhas com **scrypt** (mínimo 10 caracteres, letras e números); **bloqueio de 15 min após 5 tentativas** erradas.
+- **2FA (TOTP)** opcional por usuário, compatível com Google/Microsoft Authenticator, Authy, 1Password. Um admin pode zerar o 2FA de outro usuário.
+- Trocar senha, papel, desativar ou zerar 2FA **derruba as sessões abertas** daquele usuário.
+- O middleware [src/proxy.ts](src/proxy.ts) valida a sessão no banco e aplica o **RBAC** a páginas (`/admin/*`) e APIs (`/api/admin/*`): sem sessão → login/`401`; sem permissão → `403`.
+- `POST /api/admin/login` tem rate limit por IP+usuário e mensagem genérica (`Credenciais inválidas`); logout só por `POST`.
+
+**Auditoria** (menu **Auditoria**, só admin): login (sucesso/falha), usuários, conta, Customização, marca por site, conexão UniFi, tokens (criar/revogar/estender/excluir), sessões (desconectar/estender/liberar CPF), bloqueios/liberações, uploads e limpeza — com usuário, data/hora, alvo, detalhes e IP. Exporta CSV.
+
+**Bloqueios e liberações** (menu **Bloqueios e liberações**):
+- **Bloquear** por MAC, CPF, e-mail ou documento (com motivo e validade opcional). O botão **Bloquear** na tela de Sessões bloqueia e desconecta o dispositivo na hora.
+- **Liberar dispositivo** (por MAC): o aparelho conecta com um clique, sem formulário nem token — útil para equipe e parceiros.
+- **Liberar agora (sem navegador)**: autoriza um MAC direto na UniFi por minutos/horas/dias — TVs, impressoras, consoles.
+- **Estender sessão**: na tela de Sessões, adiciona tempo a um convidado conectado.
 
 ### 15.2 Chamadas internas autenticadas (cron / scripts)
 

@@ -7,24 +7,46 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { safeAdminNextPath } from "@/lib/safeRedirect";
 
-export function LoginForm({ brandName, logoUrl }: { brandName: string; logoUrl: string | null }) {
+export function LoginForm({
+  brandName,
+  logoUrl,
+  legacyMode,
+}: {
+  brandName: string;
+  logoUrl: string | null;
+  /** Nenhum usuário cadastrado: entra com ADMIN_PASSWORD. */
+  legacyMode: boolean;
+}) {
   const next = safeAdminNextPath(useSearchParams().get("next"));
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const post = (url: string, body: unknown) =>
+    fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
+      const res = mfaToken
+        ? await post("/api/admin/login/mfa", { mfaToken, code })
+        : await post("/api/admin/login", { username, password });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(res.status === 429 ? "Muitas tentativas. Aguarde um minuto." : "Senha incorreta");
+        if (res.status === 401 && mfaToken && /expirada/.test(data?.error ?? "")) {
+          setMfaToken(null);
+          setCode("");
+        }
+        setError(data?.error ?? "Credenciais inválidas");
+        return;
+      }
+      if (data?.mfaRequired) {
+        setMfaToken(data.mfaToken);
         return;
       }
       window.location.href = next;
@@ -46,25 +68,66 @@ export function LoginForm({ brandName, logoUrl }: { brandName: string; logoUrl: 
             </div>
           )}
           <CardTitle>{brandName || "Painel Administrativo"}</CardTitle>
-          <CardDescription>Acesso restrito</CardDescription>
+          <CardDescription>{mfaToken ? "Verificação em duas etapas" : "Acesso restrito"}</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-4" onSubmit={submit}>
-            <div className="space-y-1.5">
-              <Label htmlFor="password">Senha</Label>
-              <Input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                autoFocus
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
-            </div>
-            {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
+            {mfaToken ? (
+              <div className="space-y-1.5">
+                <Label htmlFor="code">Código do aplicativo autenticador</Label>
+                <Input
+                  id="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  autoFocus
+                  className="text-center font-mono text-xl tracking-[0.4em]"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D+/g, "").slice(0, 6))}
+                  required
+                />
+              </div>
+            ) : (
+              <>
+                <div className="space-y-1.5">
+                  <Label htmlFor="username">Usuário</Label>
+                  <Input
+                    id="username"
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoFocus
+                    placeholder={legacyMode ? "admin" : ""}
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    required={!legacyMode}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="password">Senha</Label>
+                  <Input
+                    id="password"
+                    type="password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+                {legacyMode && (
+                  <p className="text-xs text-muted-foreground">
+                    Primeiro acesso: entre com a senha definida em <code>ADMIN_PASSWORD</code> e crie seu usuário em
+                    Usuários.
+                  </p>
+                )}
+              </>
+            )}
+            {error && (
+              <p className="text-sm text-destructive" role="alert">
+                {error}
+              </p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Entrando..." : "Entrar"}
+              {loading ? "Entrando..." : mfaToken ? "Verificar" : "Entrar"}
             </Button>
           </form>
         </CardContent>

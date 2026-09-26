@@ -1,4 +1,6 @@
+import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -83,21 +85,42 @@ export async function POST(req: NextRequest) {
   }
 
   const locked = applyLocksToCreateInput(parsed.data, getTokenLocks());
-  const code = await generateUniqueTokenCode();
+  const quantity = parsed.data.quantity;
+  const batchId = quantity > 1 ? randomUUID() : null;
 
-  const token = await prisma.accessToken.create({
-    data: {
-      code,
-      description: locked.description || null,
-      durationMin: locked.durationMin,
-      downKbps: locked.downKbps ?? null,
-      upKbps: locked.upKbps ?? null,
-      bytesQuotaMB: locked.bytesQuotaMB ?? null,
-      maxUses: locked.maxUses,
-      expiresAt: locked.expiresAt,
-      site: parsed.data.site && parsed.data.site.trim() ? parsed.data.site.trim() : "default",
-    },
+  const created = [];
+  for (let i = 0; i < quantity; i++) {
+    const code = await generateUniqueTokenCode();
+    created.push(
+      await prisma.accessToken.create({
+        data: {
+          code,
+          description: locked.description || null,
+          durationMin: locked.durationMin,
+          downKbps: locked.downKbps ?? null,
+          upKbps: locked.upKbps ?? null,
+          bytesQuotaMB: locked.bytesQuotaMB ?? null,
+          maxUses: locked.maxUses,
+          expiresAt: locked.expiresAt,
+          site: parsed.data.site && parsed.data.site.trim() ? parsed.data.site.trim() : "default",
+          batchId,
+        },
+      }),
+    );
+  }
+
+  await audit(req, "token.create", batchId ? `lote ${batchId}` : created[0].code, {
+    quantity,
+    durationMin: locked.durationMin,
+    maxUses: locked.maxUses,
   });
 
+  if (batchId) {
+    return NextResponse.json(
+      { batchId, count: created.length, tokens: created.map((t) => ({ ...t, status: deriveStatus(t) })) },
+      { status: 201 },
+    );
+  }
+  const token = created[0];
   return NextResponse.json({ ...token, status: deriveStatus(token) }, { status: 201 });
 }

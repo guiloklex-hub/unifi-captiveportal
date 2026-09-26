@@ -30,6 +30,19 @@ model GuestRegistration {
   lastSeenAt   DateTime?
   reconciledAt DateTime?
   revokedAt    DateTime?
+  /// Documento não-CPF (ex.: passaporte de estrangeiro). `cpf` fica vazio nesse caso.
+  documentType String?
+  document     String?
+  /// Identidade do visitante para BI: cpf | doc:<documento> | email:<email> | mac:<mac>.
+  visitorKey   String    @default("")
+  /// form | token | returning | otp-email | otp-sms | google | microsoft | allowlist | admin
+  authMethod   String    @default("form")
+  /// LGPD: versão (SHA-256) dos termos aceitos — texto guardado em TermsVersion.
+  termsHash        String?
+  /// LGPD: consentimento opcional e separado para comunicações de marketing.
+  marketingConsent Boolean   @default(false)
+  /// Dados pessoais removidos (retenção de PII ou pedido do titular); conexão mantida.
+  anonymizedAt     DateTime?
 
   tokenId String?
   token   AccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
@@ -42,6 +55,8 @@ model GuestRegistration {
   @@index([fingerprint])
   @@index([site, authorizedAt])
   @@index([cpf, revokedAt, authorizedAt])
+  @@index([visitorKey])
+  @@index([anonymizedAt, authorizedAt])
 }
 
 model AccessToken {
@@ -59,12 +74,15 @@ model AccessToken {
   site         String    @default("default")
   createdAt    DateTime  @default(now())
   firstUsedAt  DateTime?
+  /// Tokens criados juntos ("vouchers em lote") compartilham o mesmo batchId.
+  batchId      String?
 
   registrations GuestRegistration[]
 
   @@index([code])
   @@index([expiresAt])
   @@index([site])
+  @@index([batchId])
 }
 
 model SystemSettings {
@@ -76,7 +94,48 @@ model SystemSettings {
   termsOfUse        String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
   requireToken      Boolean  @default(false)
   singleDeviceByCpf Boolean  @default(false)
-  updatedAt         DateTime @updatedAt
+
+  /// Perfil padrão de acesso (sem token). Nulo = usa GUEST_* do .env.
+  defaultDurationMin Int?
+  defaultDownKbps    Int?
+  defaultUpKbps      Int?
+  defaultQuotaMB     Int?
+
+  /// Campos do formulário: required | optional | hidden.
+  /// Todos "hidden" = acesso rápido (apenas aceite dos termos).
+  fieldName     String  @default("required")
+  fieldEmail    String  @default("required")
+  fieldPhone    String  @default("required")
+  fieldDocument String  @default("required")
+  /// Permite estrangeiros sem CPF (passaporte + telefone internacional).
+  allowForeignDocument Boolean @default(false)
+  /// Reconhece dispositivos que já se cadastraram nos últimos N dias (0 = desligado).
+  rememberDeviceDays   Int     @default(0)
+
+  /// Verificação por código: none | email | sms.
+  verificationMode   String  @default("none")
+  /// Só para e-mail: minutos de acesso provisório para o guest ler o código.
+  otpPreAuthMinutes  Int     @default(10)
+  /// Login social (credenciais OAuth no .env).
+  socialGoogle       Boolean @default(false)
+  socialMicrosoft    Boolean @default(false)
+
+  /// LGPD: checkbox de consentimento de marketing no portal (off | optional).
+  marketingConsentMode String  @default("off")
+  marketingConsentText String?
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Sobrescritas de marca por site UniFi. Campos nulos herdam de SystemSettings.
+model SiteBranding {
+  site          String   @id
+  brandName     String?
+  logoUrl       String?
+  backgroundUrl String?
+  primaryColor  String?
+  termsOfUse    String?
+  updatedAt     DateTime @updatedAt
 }
 
 /// Conexão com a controladora configurada pelo painel. Quando existe, tem
@@ -92,4 +151,112 @@ model UniFiConnection {
   apiKeyEnc   String?
   insecureTls Boolean  @default(false)
   updatedAt   DateTime @updatedAt
+}
+
+/// Código de verificação (OTP) enviado por e-mail ou SMS.
+model OtpChallenge {
+  id          String    @id @default(cuid())
+  mac         String
+  /// email | sms
+  channel     String
+  destination String
+  /// HMAC-SHA256 do código (o código em si nunca é gravado).
+  codeHash    String
+  /// Dados do formulário (JSON) para concluir a autorização após a verificação.
+  payload     String
+  attempts    Int       @default(0)
+  /// Recebeu acesso provisório na UniFi para ler o e-mail.
+  preAuth     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  verifiedAt  DateTime?
+
+  @@index([mac, createdAt])
+}
+
+/// Login social (OAuth/OIDC) em andamento ou concluído.
+model OAuthLogin {
+  /// `state` do OAuth.
+  id           String    @id
+  provider     String
+  codeVerifier String
+  nonce        String
+  /// Contexto UniFi (mac, ap, ssid, site, url) em JSON.
+  context      String
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  /// Preenchidos após o callback do provedor.
+  name         String?
+  email        String?
+  /// Ticket de uso único devolvido ao portal após o callback.
+  ticket       String?   @unique
+  usedAt       DateTime?
+
+  @@index([expiresAt])
+}
+
+/// Usuário do painel administrativo. Enquanto não existir nenhum, vale o
+/// login legado por ADMIN_PASSWORD (bootstrap).
+model AdminUser {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  name           String?
+  /// scrypt$N$r$p$salt$hash
+  passwordHash   String
+  /// admin | operator | viewer
+  role           String    @default("admin")
+  /// Segredo TOTP (base32) cifrado com AES-GCM.
+  totpSecretEnc  String?
+  totpEnabled    Boolean   @default(false)
+  disabled       Boolean   @default(false)
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  /// Incrementado para invalidar sessões abertas (troca de senha, desativação).
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Trilha de auditoria das ações administrativas.
+model AuditLog {
+  id      Int      @id @default(autoincrement())
+  at      DateTime @default(now())
+  /// Usuário do painel, "legacy-admin" (ADMIN_PASSWORD) ou "cron".
+  actor   String
+  action  String
+  target  String?
+  /// JSON com detalhes (sem segredos).
+  details String?
+  ip      String?
+
+  @@index([at])
+  @@index([actor, at])
+  @@index([action, at])
+}
+
+/// Bloqueios e liberações de acesso de guests.
+model AccessRule {
+  id          String    @id @default(cuid())
+  /// block | allow
+  kind        String
+  /// mac | cpf | email | document
+  matchType   String
+  value       String
+  reason      String?
+  /// Só para allow: duração da liberação em minutos (nulo = perfil padrão).
+  durationMin Int?
+  expiresAt   DateTime?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([kind, matchType, value])
+  @@index([matchType, value])
+}
+
+/// Texto dos termos de uso em cada versão aceita (LGPD: prova do que foi aceito).
+model TermsVersion {
+  hash      String   @id
+  text      String
+  createdAt DateTime @default(now())
 }

@@ -22,11 +22,27 @@ type LogRow = {
   email: string;
   phone: string;
   cpf: string;
+  document: string | null;
+  documentType: string | null;
   macAddress: string;
   site: string | null;
   authorizedAt: string;
   token?: { id: string; code: string; description: string | null } | null;
 };
+
+// Valores já mascarados pelo servidor (papel "somente leitura") são exibidos como vieram.
+const isMasked = (v: string) => /[*•]/.test(v);
+
+function docLabel(r: Pick<LogRow, "cpf" | "document" | "documentType">): string {
+  if (r.cpf) return isMasked(r.cpf) ? r.cpf : maskCPF(r.cpf);
+  if (r.document) return `${r.documentType === "passport" ? "Passaporte" : "Doc"} ${r.document}`;
+  return "—";
+}
+
+function phoneLabel(phone: string): string {
+  if (!phone) return "—";
+  return phone.startsWith("+") || isMasked(phone) ? phone : maskPhoneBR(phone);
+}
 
 export function LogsTable({ dict }: { dict: Dictionary }) {
   const searchParams = useSearchParams();
@@ -133,10 +149,10 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
                 data.rows.map((r) => (
                   <TableRow key={r.id}>
                     <TableCell>{r.id}</TableCell>
-                    <TableCell className="font-medium">{r.fullName}</TableCell>
-                    <TableCell>{maskCPF(r.cpf)}</TableCell>
-                    <TableCell>{r.email}</TableCell>
-                    <TableCell>{maskPhoneBR(r.phone)}</TableCell>
+                    <TableCell className="font-medium">{r.fullName || "—"}</TableCell>
+                    <TableCell>{docLabel(r)}</TableCell>
+                    <TableCell>{r.email || "—"}</TableCell>
+                    <TableCell>{phoneLabel(r.phone)}</TableCell>
                     <TableCell className="font-mono text-xs">{r.macAddress}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {r.token?.code ? (
@@ -168,7 +184,7 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
               <div key={r.id} className="border rounded-md p-4 space-y-3 bg-white shadow-xs">
                 <div className="flex justify-between items-start">
                   <div>
-                    <div className="font-semibold text-slate-900">{r.fullName}</div>
+                    <div className="font-semibold text-slate-900">{r.fullName || r.macAddress}</div>
                     <div className="text-xs text-muted-foreground">{r.email}</div>
                   </div>
                   <div className="text-[10px] text-slate-600 bg-slate-100 px-2 py-1 rounded whitespace-nowrap ml-2">
@@ -176,8 +192,8 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
                   </div>
                 </div>
                 <div className="pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-2 text-xs text-slate-600">
-                  <div>CPF: <span className="font-medium text-slate-900">{maskCPF(r.cpf)}</span></div>
-                  <div>Tel: <span className="font-medium text-slate-900">{maskPhoneBR(r.phone)}</span></div>
+                  <div>Doc: <span className="font-medium text-slate-900">{docLabel(r)}</span></div>
+                  <div>Tel: <span className="font-medium text-slate-900">{phoneLabel(r.phone)}</span></div>
                   {r.token?.code && (
                     <div>{dict.admin.tableTokenCode}: <span className="font-mono text-slate-900">{r.token.code}</span></div>
                   )}

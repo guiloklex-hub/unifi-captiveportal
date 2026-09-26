@@ -23,3 +23,38 @@ export function bigIntToNumber(value: bigint | null | undefined): number {
   if (value == null) return 0;
   return Number(value);
 }
+
+/**
+ * Exibe a chave de visitante (ver visitorKeyOf) sem expor o dado completo:
+ * CPF mascarado, documento/e-mail parcialmente ocultos, MAC como está.
+ */
+export function maskVisitorKey(key: string): string {
+  if (/^\d{11}$/.test(key)) return maskCpf(key);
+  if (key.startsWith("doc:")) {
+    const doc = key.slice(4);
+    return `Doc ${"•".repeat(Math.max(0, doc.length - 3))}${doc.slice(-3)}`;
+  }
+  if (key.startsWith("email:")) {
+    const [user, domain] = key.slice(6).split("@");
+    return `${(user ?? "").slice(0, 2)}•••@${domain ?? ""}`;
+  }
+  if (key.startsWith("mac:")) return key.slice(4);
+  return key;
+}
+
+/** Mascaramento de dados pessoais para quem só tem leitura (papel "viewer"). */
+export function maskEmail(email: string): string {
+  if (!email) return email;
+  const [user, domain] = email.split("@");
+  return `${(user ?? "").slice(0, 2)}•••@${domain ?? ""}`;
+}
+
+export function maskPhone(phone: string): string {
+  if (!phone) return phone;
+  return `•••••${phone.slice(-4)}`;
+}
+
+export function maskDocument(doc: string | null): string | null {
+  if (!doc) return doc;
+  return `${"•".repeat(Math.max(0, doc.length - 3))}${doc.slice(-3)}`;
+}

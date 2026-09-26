@@ -249,6 +249,12 @@ export async function integrationListGuests(cfg: UniFiConfig, siteName: string):
     }));
 }
 
+export async function integrationFindMacByIp(cfg: UniFiConfig, siteName: string, ip: string): Promise<string | null> {
+  const siteId = await resolveSiteId(cfg, siteName);
+  const clients = await listAll<IntegrationClient>(cfg, `/v1/sites/${siteId}/clients`);
+  return clients.find((c) => c.ipAddress === ip)?.macAddress?.toLowerCase() ?? null;
+}
+
 export async function integrationListDevices(cfg: UniFiConfig, siteName: string): Promise<UniFiDevice[]> {
   const siteId = await resolveSiteId(cfg, siteName);
   const devices = await listAll<{ macAddress?: string; name?: string; model?: string }>(

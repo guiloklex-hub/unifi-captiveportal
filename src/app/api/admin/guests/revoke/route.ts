@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { prisma } from "@/lib/prisma";
 import { unauthorizeGuest } from "@/lib/unifi";
 import { logger } from "@/lib/logger";
@@ -33,5 +34,6 @@ export async function POST(req: NextRequest) {
     .catch((err) => logger.warn({ mac, err: (err as Error).message }, "revoke: DB update failed"));
 
   logger.info({ mac, site }, "guest revoked by admin");
+  await audit(req, "guest.revoke", mac, { site });
   return NextResponse.json({ ok: true });
 }

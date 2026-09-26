@@ -3,10 +3,7 @@ import { ADMIN_COOKIE } from "@/lib/auth";
 
 export const runtime = "nodejs";
 
-export async function GET(req: NextRequest) {
-  return logout(req);
-}
-
+// Só POST: um GET permitiria deslogar o admin por um <img> em outro site (CSRF).
 export async function POST(req: NextRequest) {
   return logout(req);
 }

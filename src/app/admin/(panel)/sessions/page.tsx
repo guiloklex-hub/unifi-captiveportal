@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RevokeButton } from "@/components/admin/RevokeButton";
+import { BlockButton, ExtendButton } from "@/components/admin/SessionActions";
 import { ReleaseCpfButton } from "@/components/admin/ReleaseCpfButton";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
@@ -151,7 +152,9 @@ export default async function SessionsPage({
                       {settings.singleDeviceByCpf && reg?.cpf && (
                         <ReleaseCpfButton cpf={reg.cpf} dict={dict} />
                       )}
+                      <ExtendButton mac={g.mac} site={siteFilter ?? null} dict={dict} />
                       <RevokeButton mac={g.mac} site={siteFilter ?? null} dict={dict} />
+                      <BlockButton mac={g.mac} site={siteFilter ?? null} dict={dict} />
                     </TableCell>
                   </TableRow>
                 );
