@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { deriveStatus } from "@/lib/tokens";
 import { extendTokenSchema } from "@/lib/tokenValidators";
@@ -87,7 +88,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     });
     if (!parsed.success) {
       return NextResponse.json(
-        { error: "Dados inválidos", issues: parsed.error.flatten() },
+        { error: "Dados inválidos", issues: z.flattenError(parsed.error) },
         { status: 400 },
       );
     }

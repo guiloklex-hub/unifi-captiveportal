@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { authorizeGuest, UniFiUnavailableError } from "@/lib/unifi";
 import { getGuestRegistrationSchema } from "@/lib/validators";
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Dados inválidos", issues: parsed.error.flatten() },
+      { error: "Dados inválidos", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }

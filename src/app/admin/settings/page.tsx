@@ -57,7 +57,7 @@ export default function SettingsPage() {
       } else {
         alert(data.error || dict.admin.uploadError);
       }
-    } catch (err) {
+    } catch {
       alert(dict.admin.connError);
     }
   };
@@ -76,7 +76,7 @@ export default function SettingsPage() {
       } else {
         alert(dict.admin.saveError);
       }
-    } catch (err) {
+    } catch {
       alert(dict.admin.connError);
     } finally {
       setSaving(false);
@@ -182,7 +182,7 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <textarea
-              className="min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="min-h-[150px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               value={settings.termsOfUse}
               onChange={(e) => setSettings({ ...settings, termsOfUse: e.target.value })}
               placeholder={dict.admin.termsPlaceholder}

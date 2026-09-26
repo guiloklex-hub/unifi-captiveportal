@@ -37,11 +37,11 @@ export function TermsModal({ terms, dict }: { terms?: string | null; dict: Dicti
           <div className="prose prose-sm dark:prose-invert mt-4">
             <ReactMarkdown
               components={{
-                h1: ({node, ...props}) => <h1 className="text-xl font-bold mb-4" {...props} />,
-                h2: ({node, ...props}) => <h2 className="text-lg font-bold mb-3" {...props} />,
-                p: ({node, ...props}) => <p className="mb-4 leading-relaxed" {...props} />,
-                ul: ({node, ...props}) => <ul className="list-disc pl-5 mb-4" {...props} />,
-                li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                h1: ({ ...props }) => <h1 className="text-xl font-bold mb-4" {...props} />,
+                h2: ({ ...props }) => <h2 className="text-lg font-bold mb-3" {...props} />,
+                p: ({ ...props }) => <p className="mb-4 leading-relaxed" {...props} />,
+                ul: ({ ...props }) => <ul className="list-disc pl-5 mb-4" {...props} />,
+                li: ({ ...props }) => <li className="mb-1" {...props} />,
               }}
             >
               {terms}

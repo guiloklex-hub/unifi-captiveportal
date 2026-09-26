@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 10
+    groups:
+      # Minors/patches agrupados num único PR semanal para reduzir ruído.
+      npm-minor-patch:
+        update-types: [minor, patch]
+      prisma:
+        patterns: ["prisma", "@prisma/*"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+    ignore:
+      # eslint 10 ainda não é suportado por eslint-plugin-react (via eslint-config-next).
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      # typescript-eslint suporta apenas TypeScript < 6.1.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
+      # @prisma/adapter-better-sqlite3 exige better-sqlite3 ^12.
+      - dependency-name: better-sqlite3
+        update-types: ["version-update:semver-major"]
+      # Mantém os tipos alinhados ao runtime (Node 24 LTS).
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

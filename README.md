@@ -90,15 +90,30 @@ Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti Un
 
 ## Stack
 
-- **Next.js 16** (App Router, Turbopack) + TypeScript
-- **React 19** + `react-hook-form` + `zod`
-- **Tailwind CSS** + componentes shadcn/ui
+- **Next.js 16** (App Router, Turbopack) + **TypeScript 6**
+- **React 19** + `react-hook-form` + **Zod 4**
+- **Tailwind CSS 4** (configuração CSS-first em `src/app/globals.css`) + componentes shadcn/ui + `tw-animate-css`
 - **Prisma 7** + SQLite (via `@prisma/adapter-better-sqlite3`)
-- **Recharts** para gráficos BI
+- **Recharts 3** para gráficos BI
 - **react-markdown** para termos de uso formatados
-- **undici** para chamadas HTTPS à controladora (suporte a TLS self-signed, circuit breaker, retry com backoff exponencial e mutex de login)
+- **undici 8** para chamadas HTTPS à controladora (suporte a TLS self-signed, circuit breaker, retry com backoff exponencial e mutex de login)
 - **PM2** para gerenciamento de processo em produção
 - **i18n nativo** via Dictionaries (sem dependências externas pesadas) — PT/EN/ES
+- **Vitest** (testes unitários) + **ESLint 9** (flat config, `eslint-config-next`)
+
+---
+
+## 🧪 Desenvolvimento e qualidade
+
+| Comando | O que faz |
+|---|---|
+| `npm run dev` | Servidor de desenvolvimento (porta 80) |
+| `npm run lint` | ESLint (flat config em `eslint.config.mjs`) |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm test` | Testes unitários (Vitest, em `tests/unit/`) |
+| `npm run build` | Build de produção |
+
+O CI (`.github/workflows/ci.yml`) roda lint, typecheck, testes, `prisma migrate deploy` e build em todo PR. O **Dependabot** (`.github/dependabot.yml`) abre PRs semanais agrupando minors/patches; majors bloqueados por incompatibilidade conhecida estão documentados no próprio arquivo.
 
 ---
 
@@ -119,7 +134,7 @@ Tradução cobre:
 - Ubuntu / Debian (ou derivado)
 - Acesso `sudo`
 - Controladora UniFi v10.1.89 acessível na rede
-- Node 24.x
+- Node 24.x (mínimo 22.19 — exigido pelo `undici` 8)
 - `git`, `sqlite3` (CLI, usado pelo `scripts/backup.sh`), `openssl` (gerar segredos)
 
 ---

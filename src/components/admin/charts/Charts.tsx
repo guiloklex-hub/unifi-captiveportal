@@ -114,7 +114,7 @@ export function BytesAreaChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis dataKey="date" tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 11 }} tickFormatter={(v) => formatBytesShort(Number(v))} width={70} />
-        <Tooltip formatter={(v: number, name) => [formatBytesShort(Number(v)), name === "rx" ? rxLabel : txLabel]} />
+        <Tooltip formatter={(v, name) => [formatBytesShort(Number(v)), name === "rx" ? rxLabel : txLabel]} />
         <Legend formatter={(v) => (v === "rx" ? rxLabel : txLabel)} />
         <Area type="monotone" dataKey="rx" stroke="#2563eb" fill="url(#rxFill)" strokeWidth={2} />
         <Area type="monotone" dataKey="tx" stroke="#16a34a" fill="url(#txFill)" strokeWidth={2} />

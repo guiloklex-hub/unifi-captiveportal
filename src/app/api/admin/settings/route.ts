@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getTokenLocks } from "@/lib/tokenLocks";
 import { settingsSchema } from "@/lib/settingsValidators";
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
   const parsed = settingsSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Dados inválidos", issues: parsed.error.flatten() },
+      { error: "Dados inválidos", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }

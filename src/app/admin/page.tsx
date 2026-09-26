@@ -24,17 +24,6 @@ import { formatBytes, maskCpf, bigIntToNumber } from "@/lib/format";
 
 export const dynamic = "force-dynamic";
 
-type RecentRow = {
-  authorizedAt: Date;
-  cpf: string;
-  fullName: string;
-  bytesTx: bigint | null;
-  bytesRx: bigint | null;
-  fingerprint: string | null;
-  userAgent: string | null;
-  tokenId: string | null;
-};
-
 type DashboardData = Awaited<ReturnType<typeof loadDashboard>>;
 
 const WEEKDAY_KEYS = [
