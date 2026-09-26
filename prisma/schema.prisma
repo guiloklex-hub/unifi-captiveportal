@@ -78,3 +78,18 @@ model SystemSettings {
   singleDeviceByCpf Boolean  @default(false)
   updatedAt         DateTime @updatedAt
 }
+
+/// Conexão com a controladora configurada pelo painel. Quando existe, tem
+/// precedência sobre as variáveis UNIFI_* do .env. Segredos cifrados (AES-GCM).
+model UniFiConnection {
+  id          String   @id @default("default")
+  url         String
+  site        String   @default("default")
+  /// auto | apikey | password
+  authMode    String   @default("auto")
+  username    String?
+  passwordEnc String?
+  apiKeyEnc   String?
+  insecureTls Boolean  @default(false)
+  updatedAt   DateTime @updatedAt
+}

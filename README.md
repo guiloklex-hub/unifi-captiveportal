@@ -361,11 +361,15 @@ Todas ficam no arquivo `.env`.
 | Variável | Obrigatório | Descrição | Exemplo |
 |---|---|---|---|
 | `DATABASE_URL` | Sim | Caminho do SQLite | `file:./prisma/dev.db` |
-| `UNIFI_URL` | Sim | URL da controladora | `https://192.168.1.1:8443` |
-| `UNIFI_USERNAME` | Sim | Usuário admin local UniFi | `portal-api` |
-| `UNIFI_PASSWORD` | Sim | Senha do usuário UniFi | `SenhaForte123` |
-| `UNIFI_SITE` | Não | Site UniFi padrão (multi-site supported via tokens) | `default` |
+| `UNIFI_URL` | Sim¹ | URL da controladora | `https://192.168.1.1` (UniFi OS) / `https://192.168.1.10:8443` (Classic) |
+| `UNIFI_AUTH_MODE` | Não | `auto` (padrão), `apikey` ou `password` — ver seção **6.1** | `auto` |
+| `UNIFI_API_KEY` | Não² | API Key da UniFi Network (UniFi OS, Network 9+) | *(gerada na UniFi)* |
+| `UNIFI_USERNAME` | Não² | Usuário admin **local** UniFi (sem MFA) | `portal-api` |
+| `UNIFI_PASSWORD` | Não² | Senha do usuário UniFi | `SenhaForte123` |
+| `UNIFI_SITE` | Não | Site UniFi padrão (nome curto) | `default` |
 | `UNIFI_INSECURE_TLS` | Não | `true` aceita certificado self-signed | `true` |
+| `DATA_ENCRYPTION_KEY` | Não | Chave (32 bytes hex/base64) para cifrar segredos salvos no banco. Se ausente, derivada do `ADMIN_SECRET` | *(openssl rand -hex 32)* |
+| `UPLOAD_DIR` | Não | Diretório das imagens enviadas | `./public/uploads` |
 | `GUEST_DURATION_MIN` | Não | Duração padrão (minutos), usada quando guest autoriza sem token | `480` |
 | `GUEST_DOWN_KBPS` | Não | Limite de download padrão (Kbps) | `5120` |
 | `GUEST_UP_KBPS` | Não | Limite de upload padrão (Kbps) | `2048` |
@@ -376,6 +380,9 @@ Todas ficam no arquivo `.env`.
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 | `PUBLIC_PORTAL_URL` | Não | URL pública (com protocolo) usada para gerar deep-links de QR de token. Se vazio, usa o `Host` da requisição admin — que pode ser interno (`127.0.0.1`) e inviável para escanear. | `https://wifi.empresa.com.br` |
+
+¹ Pode ser configurado pelo painel em **Conexão UniFi** (tem precedência sobre o `.env`).
+² Informe a API Key **ou** usuário/senha (ou ambos, no modo `auto`).
 
 **Gerar `ADMIN_SECRET`:**
 
@@ -412,12 +419,53 @@ Quando definidas, **travam** o campo correspondente no painel admin (formulário
 
 ## 6. Configurando a controladora UniFi
 
-### 6.1 Criar usuário dedicado para a API
+### 6.1 Formas de conexão e compatibilidade
+
+O portal fala com a controladora por três caminhos e escolhe sozinho o melhor disponível (modo `auto`):
+
+| Estratégia | Autenticação | Onde funciona | Uso |
+|---|---|---|---|
+| **API oficial** (Integration API) | API Key (`X-API-KEY`) | UniFi OS com Network **9.x ou superior** | Preferida para liberar/revogar guests |
+| **API legada + API Key** | API Key | UniFi OS com Network 9+ | Estatísticas de tráfego; fallback |
+| **API legada + usuário/senha** | Cookie de sessão | **Todas** as versões (5.x → 10.x), UniFi OS e Network Application clássica | Compatibilidade total; fallback |
+
+| Controladora | Recomendado |
+|---|---|
+| UDM / UDM Pro / UDM SE / UDR / UCG / UX / Cloud Key Gen2+ / **UniFi OS Server** (Network 9+) | `UNIFI_AUTH_MODE=auto` com **API Key** (sem senha armazenada) |
+| **Network Application clássica** (self-hosted Windows/Linux, porta 8443) | Usuário e senha (`auto` ou `password`) — API Key não existe nessa variante |
+| UniFi OS com Network < 9 | Usuário e senha |
+
+Modos (`UNIFI_AUTH_MODE` ou tela **Conexão UniFi**):
+- `auto` — usa a API Key quando configurada e cai para usuário/senha se a controladora não suportar. Estratégias recusadas ficam 10 min fora da rotação.
+- `apikey` — somente API Key (nenhuma senha é usada nem armazenada).
+- `password` — somente usuário/senha (comportamento anterior).
+
+#### Criar uma API Key (UniFi OS, Network 9+)
+
+1. Na UniFi Network: **Settings → Control Plane → Integrations** (em algumas versões, **UniFi OS → Settings → Integrations**).
+2. **Create API Key**, dê um nome (ex.: `captive-portal`) e copie a chave (ela aparece uma única vez).
+3. Cole em `UNIFI_API_KEY` no `.env` **ou** em **Painel → Conexão UniFi → API Key** e clique em **Testar conexão**.
+
+> A chave herda as permissões do usuário que a criou. Use um administrador com acesso ao(s) site(s) do portal.
+
+#### Criar usuário dedicado (quando usar usuário/senha)
 
 1. Acesse o painel da controladora UniFi.
 2. Vá em **Settings → Admins → Add New Admin**.
-3. Marque **Restrict to local access** e defina permissão **Site Admin**.
-4. Insira credenciais em `UNIFI_USERNAME` / `UNIFI_PASSWORD` no `.env`.
+3. Marque **Restrict to local access** (conta local, **sem MFA** — contas UI.com com 2FA não conseguem logar pela API) e defina permissão **Site Admin**.
+4. Insira as credenciais em `UNIFI_USERNAME` / `UNIFI_PASSWORD` no `.env` ou na tela **Conexão UniFi**.
+
+#### Tela "Conexão UniFi" no painel
+
+Em `/admin/unifi` é possível configurar URL, site, modo, API Key e usuário/senha **sem editar o `.env`**:
+- **Testar conexão** verifica cada estratégia separadamente (sem salvar) e mostra tipo de controladora (UniFi OS/Classic), versão da Network, sites encontrados e qual estratégia será usada.
+- Segredos são gravados **cifrados** (AES-256-GCM) e nunca retornam ao navegador. A chave vem de `DATA_ENCRYPTION_KEY` (ou é derivada do `ADMIN_SECRET` — ao trocar o `ADMIN_SECRET` sem `DATA_ENCRYPTION_KEY`, salve os segredos novamente).
+- **Voltar a usar o .env** apaga a configuração do banco.
+- Testes feitos pela tela não afetam o circuit breaker nem a sessão usada pelos convidados.
+
+#### Controladora simulada (desenvolvimento)
+
+Sem hardware à mão? `npm run mock:unifi` sobe uma controladora UniFi OS simulada em `http://127.0.0.1:8443` (usuário `api`, senha `pw`, API Key `chave-teste`); `MOCK_VARIANT=classic` simula a Network Application clássica.
 
 ### 6.2 Configurar o External Portal Server
 
@@ -579,7 +627,7 @@ unifi-captive-portal/
 │   │   ├── portal/                   # PortalForm, TermsModal
 │   │   └── admin/                    # Tabelas, charts, StatCards
 │   └── lib/
-│       ├── unifi.ts                  # Cliente UniFi (multi-site, circuit breaker)
+│       ├── unifi/                    # Cliente UniFi (API Key + senha, fallback, multi-site, circuit breaker)
 │       ├── auth.ts                   # Sessão admin via HMAC
 │       ├── settings.ts               # SystemSettings com requireToken
 │       ├── tokens.ts                 # Geração, validação, reserva atômica
@@ -597,23 +645,37 @@ unifi-captive-portal/
 
 ## 11. Endpoints da API UniFi utilizados
 
+**API oficial** (`/proxy/network/integration/v1`, header `X-API-KEY`):
+
+| Endpoint | Método | Descrição |
+|---|---|---|
+| `/v1/info` | GET | Versão da Network |
+| `/v1/sites` | GET | Sites (`internalReference` = nome curto usado na URL do portal) |
+| `/v1/sites/{siteId}/clients?filter=macAddress.eq('..')` | GET | Localiza o cliente pelo MAC (fallback: varredura paginada) |
+| `/v1/sites/{siteId}/clients/{clientId}/actions` | POST | `AUTHORIZE_GUEST_ACCESS` (`timeLimitMinutes`, `rxRateLimitKbps`=download, `txRateLimitKbps`=upload, `dataUsageLimitMBytes`) e `UNAUTHORIZE_GUEST_ACCESS` |
+| `/v1/sites/{siteId}/devices` | GET | Nome dos APs |
+
+**API legada** (`/api/...` no Classic, `/proxy/network/api/...` no UniFi OS):
+
 | Endpoint | Método | Descrição |
 |---|---|---|
 | `/api/login` ou `/api/auth/login` | POST | Login (Classic ou UniFi OS — detecção automática) |
 | `/api/s/{site}/cmd/stamgr` | POST | `authorize-guest` e `unauthorize-guest` |
-| `/api/s/{site}/stat/guest` | GET | Lista guests ativos com `tx_bytes`, `rx_bytes` etc. |
+| `/api/s/{site}/stat/guest` | GET | Guests com `tx_bytes`, `rx_bytes` etc. |
+| `/api/self/sites` | GET | Sites |
+| `/api/s/{site}/stat/sysinfo` | GET | Versão da Network |
+| `/api/s/{site}/stat/device-basic` | GET | Nome dos APs |
 
-Recursos do cliente em [src/lib/unifi.ts](src/lib/unifi.ts):
+Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 
+- **Estratégias com fallback automático** (`index.ts`): API oficial → legada com API Key → legada com senha.
 - Detecção automática **UniFi OS vs Classic** por probe.
-- **Mutex de login** evita relogin concorrente.
+- **Mutex de login** evita relogin concorrente; **CSRF rotativo** reaproveitado.
 - **Circuit breaker**: 5 falhas consecutivas → 30s "open".
 - **Retry** com backoff exponencial (500ms, 1500ms) em 5xx, abort, timeout.
-- **CSRF rotativo**: header `x-updated-csrf-token` é capturado e reaproveitado.
-- **Defesa contra HTML 200**: se a controladora devolver HTML em sucesso (sessão invalidada silenciosa), invalida cache e força relogin.
-- **Multi-site**: parâmetro `site` opcional em todas as funções; fallback para `UNIFI_SITE` do `.env`, depois `"default"`.
-
----
+- **Defesa contra HTML 200**: se a controladora devolver HTML em sucesso (sessão invalidada silenciosa), força relogin.
+- Estado (sessão, circuito, caches) **único por processo** — antes cada rota do Next mantinha a própria sessão.
+- **Multi-site**: parâmetro `site` opcional em todas as funções (validado); fallback para o site padrão configurado.
 
 ## 12. Endpoints da aplicação
 
@@ -635,7 +697,7 @@ Recursos do cliente em [src/lib/unifi.ts](src/lib/unifi.ts):
 | `/api/admin/settings` | GET/POST | Branding + toggle requireToken |
 | `/api/admin/logs` | GET | Listagem paginada + CSV (inclui token) |
 | `/api/admin/guests/active` | GET | Sessões UniFi ativas |
-| `/api/admin/guests/revoke` | POST | Desconecta guest específico |
+| `/api/admin/guests/revoke` | POST | Desconecta guest específico (aceita `site`) |
 | `/api/admin/tokens` | GET/POST | Lista/cria tokens |
 | `/api/admin/tokens/[id]` | PATCH/DELETE | Revoga (com cascade), estende ou exclui |
 | `/api/admin/tokens/locks` | GET | Devolve quais campos estão travados via `.env` |
@@ -644,6 +706,9 @@ Recursos do cliente em [src/lib/unifi.ts](src/lib/unifi.ts):
 | `/api/admin/cleanup` | POST | Apaga GuestRegistration > `GUEST_RETENTION_DAYS` (cron) |
 | `/api/admin/dns-logs` | GET | Atividade DNS via AdGuard Home |
 | `/api/admin/upload` | POST | Upload de imagens (logo/background) |
+| `/api/admin/unifi/connection` | GET/PUT/DELETE | Conexão UniFi salva no painel (segredos nunca retornam) |
+| `/api/admin/unifi/test` | POST | Diagnóstico da conexão (configuração atual ou rascunho do formulário) |
+| `/api/admin/sites` | GET | Sites para filtros (banco ∪ controladora) |
 
 ### Operacionais
 

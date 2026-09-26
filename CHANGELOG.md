@@ -6,12 +6,23 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Conexão UniFi por API Key** (API oficial *Integration API*, Network 9+) — sem usuário/senha, sessão ou CSRF.
+  Modos `UNIFI_AUTH_MODE=auto|apikey|password`; no `auto`, fallback automático
+  API oficial → API legada com API Key → API legada com usuário/senha.
+- Compatibilidade mantida com **todas as versões**: Network Application clássica (self-hosted) e UniFi OS.
+- Tela **Conexão UniFi** (`/admin/unifi`): configurar URL/site/modo/API Key/usuário e senha pelo painel, com
+  **Testar conexão** (tipo de controladora, versão, sites, estratégia ativa) sem afetar os guests.
+  Segredos cifrados com AES-256-GCM (`DATA_ENCRYPTION_KEY`).
+- Nome do AP nas sessões ativas; filtros de site incluem os sites da controladora.
+- `npm run mock:unifi`: controladora simulada (UniFi OS ou Classic) para desenvolvimento sem hardware.
 - ESLint 9 em flat config (`eslint.config.mjs`) — `next lint` foi removido no Next 16.
 - Vitest com testes unitários para validadores, tokens, locks, CSV, máscaras, rate limit e sessão admin.
 - CI executa lint, typecheck, testes, migrações e build.
 - Configuração do Dependabot para npm e GitHub Actions.
 
 ### Alterado
+- Cliente UniFi reorganizado em `src/lib/unifi/` (config, transporte, API legada, API oficial, fachada).
+  Sessão, circuit breaker e caches agora são únicos por processo (antes cada rota do Next tinha os seus).
 - **Retenção padrão de logs: 365 dias** (Marco Civil da Internet, art. 13). Antes: 180.
 - Settings com cache em memória (30 s, invalidado ao salvar) — antes havia uma escrita no SQLite por page view.
 - Reconciliação UniFi ↔ DB com uma consulta para todos os MACs (antes N+1).
@@ -25,6 +36,8 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
 ### Corrigido
+- "Dispositivos online agora" contava guests expirados/não autorizados.
+- Falhas de configuração/credencial da controladora mostram ao guest "serviço indisponível" (antes: erro genérico).
 - **Multi-site**: o site do caminho `/guest/s/<site>/` enviado pela controladora era descartado — todo guest era
   autorizado no `UNIFI_SITE` padrão. Agora é repassado ao portal.
 - **Revogação multi-site**: "Desconectar" e "Liberar CPF" usavam sempre o site padrão; agora usam o site da sessão.

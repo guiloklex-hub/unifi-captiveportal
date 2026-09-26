@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { authorizeGuest, UniFiUnavailableError } from "@/lib/unifi";
+import { authorizeGuest, UniFiClientError } from "@/lib/unifi";
 import { getGuestRegistrationSchema } from "@/lib/validators";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { logger } from "@/lib/logger";
@@ -204,7 +204,9 @@ export async function POST(req: NextRequest) {
       );
     }
     const message = err instanceof Error ? err.message : "Erro desconhecido";
-    const isDown = err instanceof UniFiUnavailableError;
+    // Qualquer erro que não seja "payload recusado" é indisponibilidade do nosso
+    // lado (rede, circuito aberto, credencial/configuração inválida).
+    const isDown = !(err instanceof UniFiClientError);
     log.error({ err: message, isDown }, "UniFi authorize failed");
     // Detalhes da controladora (paths, respostas) ficam só no log — não vazam ao guest.
     return NextResponse.json(

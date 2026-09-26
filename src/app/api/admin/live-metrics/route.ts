@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { listActiveGuests } from "@/lib/unifi";
+import { isGuestOnline, listActiveGuests } from "@/lib/unifi";
 import { bigIntToNumber } from "@/lib/format";
 import { logger } from "@/lib/logger";
 
@@ -23,7 +23,7 @@ export async function GET() {
 
   let onlineNow: number | null;
   if (onlineRaw.status === "fulfilled") {
-    onlineNow = onlineRaw.value.length;
+    onlineNow = onlineRaw.value.filter(isGuestOnline).length;
   } else {
     onlineNow = null;
     logger.warn(

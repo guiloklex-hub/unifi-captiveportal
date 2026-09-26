@@ -1,4 +1,4 @@
-import { listActiveGuests } from "@/lib/unifi";
+import { isGuestOnline, listActiveGuests, listDevices } from "@/lib/unifi";
 import { prisma } from "@/lib/prisma";
 import {
   Table,
@@ -40,6 +40,8 @@ export default async function SessionsPage({
   const siteFilter = site && site !== "all" ? site : undefined;
   let guests: Awaited<ReturnType<typeof listActiveGuests>> = [];
   let error: string | null = null;
+  // Nomes dos APs (best-effort): a falha aqui não pode esconder as sessões.
+  const devicesPromise = listDevices(siteFilter).catch(() => []);
   try {
     const allGuests = await listActiveGuests(siteFilter);
     // Filtra para exibir apenas quem está efetivamente autorizado no momento
@@ -47,10 +49,7 @@ export default async function SessionsPage({
     const seen = new Set<string>();
     guests = allGuests.filter((g) => {
       const mac = g.mac.toLowerCase();
-      // Em algumas versões da UniFi, o campo authorized pode vir ausente (undefined)
-      // Portanto, só ocultamos se for explicitamente false (não autorizado).
-      // `expired` indica sessão de guest encerrada que o /stat/guest ainda lista.
-      if (g.authorized === false || g.expired === true || seen.has(mac)) return false;
+      if (!isGuestOnline(g) || seen.has(mac)) return false;
       seen.add(mac);
       return true;
     });
@@ -58,6 +57,8 @@ export default async function SessionsPage({
     // Wait for dict extraction later, or use a default error message
     error = err instanceof Error ? err.message : "error";
   }
+
+  const apNameByMac = new Map((await devicesPromise).map((d) => [d.mac, d.name]));
 
   const headersList = await headers();
   const locale = getLocale(headersList.get("accept-language"));
@@ -126,7 +127,14 @@ export default async function SessionsPage({
                       {reg?.fullName ?? <span className="text-muted-foreground">{dict.admin.unknown}</span>}
                     </TableCell>
                     <TableCell className="font-mono text-xs">{g.mac}</TableCell>
-                    <TableCell>{g.essid ?? "-"}</TableCell>
+                    <TableCell>
+                      <div>{g.essid ?? "-"}</div>
+                      {g.ap_mac && apNameByMac.has(g.ap_mac.toLowerCase()) && (
+                        <div className="text-xs text-muted-foreground">
+                          {apNameByMac.get(g.ap_mac.toLowerCase())}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell>{formatBytes(g.rx_bytes)}</TableCell>
                     <TableCell>{formatBytes(g.tx_bytes)}</TableCell>
                     <TableCell>
