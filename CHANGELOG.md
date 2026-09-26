@@ -51,6 +51,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Configuração do Dependabot para npm e GitHub Actions.
 
 ### Alterado
+- CI: `actions/checkout`, `actions/setup-node` e `actions/upload-artifact` na v7 (runtime Node 24).
 - **Login do painel**: `ADMIN_PASSWORD` vira senha de primeiro acesso (bootstrap); após criar o primeiro usuário,
   o login passa a ser por usuário e senha. `ADMIN_BREAK_GLASS=true` reabre o acesso de emergência.
   Sessões abertas antes da atualização precisam entrar de novo (novo formato de token).
