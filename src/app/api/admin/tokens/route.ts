@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
@@ -107,6 +108,12 @@ export async function POST(req: NextRequest) {
       }),
     );
   }
+
+  await audit(req, "token.create", batchId ? `lote ${batchId}` : created[0].code, {
+    quantity,
+    durationMin: locked.durationMin,
+    maxUses: locked.maxUses,
+  });
 
   if (batchId) {
     return NextResponse.json(

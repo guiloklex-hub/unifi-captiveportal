@@ -5,6 +5,7 @@ import { getSystemSettings } from "@/lib/settings";
 import { unifiContextSchema } from "@/lib/validators";
 import { grantGuestAccess } from "@/lib/portal/grantAccess";
 import { findReturningGuest } from "@/lib/portal/returning";
+import { findAllowRule } from "@/lib/portal/accessRules";
 import { portalRateLimit } from "@/lib/portal/rateLimit";
 
 export const runtime = "nodejs";
@@ -23,13 +24,15 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: dict.portal.errInvalidData }, { status: 400 });
   const ctx = parsed.data;
 
-  const returning = await findReturningGuest(ctx.mac, settings);
+  // Dispositivo liberado pelo admin tem precedência sobre o "lembrar dispositivo".
+  const allow = await findAllowRule(ctx.mac);
+  const returning = allow ? null : await findReturningGuest(ctx.mac, settings);
   // 410: o cliente deve cair para o formulário normal.
-  if (!returning) return NextResponse.json({ error: dict.portal.errReturningExpired }, { status: 410 });
+  if (!allow && !returning) return NextResponse.json({ error: dict.portal.errReturningExpired }, { status: 410 });
 
   const result = await grantGuestAccess(
     {
-      identity: returning.identity,
+      identity: returning?.identity ?? { fullName: "", email: "", phone: "", cpf: "", documentType: null, document: null },
       mac: ctx.mac,
       apMac: ctx.apMac,
       ssid: ctx.ssid,
@@ -38,7 +41,8 @@ export async function POST(req: NextRequest) {
       fingerprint: ctx.fingerprint ?? null,
       userAgent: req.headers.get("user-agent") ?? undefined,
       ipAddress: ip !== "unknown" ? ip : undefined,
-      authMethod: "returning",
+      authMethod: allow ? "allowlist" : "returning",
+      adminGrant: allow ? { minutes: allow.durationMin } : undefined,
     },
     settings,
     dict,

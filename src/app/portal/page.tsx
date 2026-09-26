@@ -8,6 +8,7 @@ import { PortalForm } from "@/components/portal/PortalForm";
 import { getSystemSettings, resolveBranding } from "@/lib/settings";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { findReturningGuest } from "@/lib/portal/returning";
+import { findAllowRule } from "@/lib/portal/accessRules";
 import { availableProviders, peekSocialTicket } from "@/lib/portal/oauth";
 import { contrastForeground } from "@/lib/utils";
 
@@ -75,8 +76,10 @@ export default async function PortalPage({
           .catch(() => null)
       : null;
 
-  const returning =
-    !preview && !social && MAC_RE.test(mac)
+  const allowed = !preview && !social && MAC_RE.test(mac) ? await findAllowRule(mac).catch(() => null) : null;
+  const returning = allowed
+    ? { firstName: "" }
+    : !preview && !social && MAC_RE.test(mac)
       ? await findReturningGuest(mac, settings)
           .then((r) => (r ? { firstName: r.firstName } : null))
           .catch(() => null)

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getTokenLocks } from "@/lib/tokenLocks";
@@ -94,6 +95,7 @@ export async function POST(req: NextRequest) {
     create: { id: "config", ...fields },
   });
   invalidateSystemSettingsCache();
+  await audit(req, "settings.update", null, { fields: Object.keys(fields) });
 
   return NextResponse.json(settings);
 }

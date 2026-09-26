@@ -1,11 +1,15 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { ADMIN_COOKIE, verifySessionToken } from "@/lib/auth";
+import { ADMIN_COOKIE } from "@/lib/auth";
+import { getAdminSession } from "@/lib/admin/session";
+import { requiredRole, roleAllows } from "@/lib/admin/rbac";
+import { ACTOR_HEADER, ROLE_HEADER } from "@/lib/admin/audit";
 
 // Allowlist de endpoints públicos cobertos pelo matcher.
 // Why: login/logout não podem exigir sessão válida (login a cria, logout a destrói).
 const PUBLIC_PATHS = new Set([
   "/admin/login",
   "/api/admin/login",
+  "/api/admin/login/mfa",
   "/api/admin/logout",
   "/admin/logout",
 ]);
@@ -18,7 +22,7 @@ function isApi(pathname: string): boolean {
   return pathname.startsWith("/api/");
 }
 
-// Comparação constant-time em string (sem Node crypto, compatível com Edge).
+// Comparação constant-time em string.
 function timingSafeStringEqual(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
   let diff = 0;
@@ -49,20 +53,25 @@ function isSameOrigin(req: NextRequest): boolean {
   return false;
 }
 
+/** Repassa a identidade para as rotas (auditoria) — sobrescreve valores forjados pelo cliente. */
+function withIdentity(req: NextRequest, user: string, role: string): NextResponse {
+  const headers = new Headers(req.headers);
+  headers.set(ACTOR_HEADER, user);
+  headers.set(ROLE_HEADER, role);
+  return NextResponse.next({ request: { headers } });
+}
+
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const method = req.method.toUpperCase();
 
   // Bypass por Bearer ${CRON_SECRET} para chamadas internas (cron jobs locais).
   // Why: tarefas de manutenção precisam rodar sem cookie de admin e sem Origin.
-  // Avaliado antes da allowlist e da checagem CSRF para que cron/scripts
-  // internos não fiquem sujeitos a checagem de Origin nem de método.
   const cronSecret = process.env.CRON_SECRET;
   if (cronSecret && cronSecret.length >= 16) {
     const auth = req.headers.get("authorization") ?? "";
-    const expected = `Bearer ${cronSecret}`;
-    if (timingSafeStringEqual(auth, expected)) {
-      return NextResponse.next();
+    if (timingSafeStringEqual(auth, `Bearer ${cronSecret}`)) {
+      return withIdentity(req, "cron", "admin");
     }
   }
 
@@ -72,11 +81,22 @@ export async function proxy(req: NextRequest) {
     return NextResponse.json({ error: "Origem inválida" }, { status: 403 });
   }
 
-  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+  if (PUBLIC_PATHS.has(pathname)) {
+    // Remove identidade forjada mesmo em rotas públicas.
+    const headers = new Headers(req.headers);
+    headers.delete(ACTOR_HEADER);
+    headers.delete(ROLE_HEADER);
+    return NextResponse.next({ request: { headers } });
+  }
 
-  const token = req.cookies.get(ADMIN_COOKIE)?.value;
-  const valid = await verifySessionToken(token);
-  if (valid) return NextResponse.next();
+  const session = await getAdminSession(req.cookies.get(ADMIN_COOKIE)?.value);
+  if (session) {
+    if (!roleAllows(session.role, requiredRole(pathname, method))) {
+      if (isApi(pathname)) return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
+      return NextResponse.redirect(new URL("/admin?forbidden=1", req.url));
+    }
+    return withIdentity(req, session.username, session.role);
+  }
 
   // APIs respondem 401 puro; páginas redirecionam para a tela de login.
   if (isApi(pathname)) {

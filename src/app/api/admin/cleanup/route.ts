@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
 
@@ -19,7 +20,7 @@ const DEFAULT_RETENTION_DAYS = 365;
  *   30 3 * * * curl -fsS -X POST -H "Authorization: Bearer $CRON_SECRET" \
  *     http://127.0.0.1/api/admin/cleanup
  */
-export async function POST() {
+export async function POST(req: NextRequest) {
   const envRaw = parseInt(process.env.GUEST_RETENTION_DAYS ?? "", 10);
   const retention = Number.isFinite(envRaw) && envRaw >= MIN_RETENTION_DAYS
     ? envRaw
@@ -43,6 +44,7 @@ export async function POST() {
     "cleanup: GuestRegistration purge",
   );
 
+  await audit(req, "cleanup", null, { retention, deleted: result.count });
   return NextResponse.json({
     ok: true,
     retentionDays: retention,

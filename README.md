@@ -376,7 +376,8 @@ Todas ficam no arquivo `.env`.
 | `GUEST_QUOTA_MB` | Não | Cota de dados padrão (MB) | `1024` |
 | `PORTAL_MAC_LOOKUP` | Não | `false` desativa a busca do MAC pelo IP quando o portal é aberto sem `?id=` (ex.: QR code) | `true` |
 | `PORTAL_SUCCESS_URL` | Não | Redirect após autorização | `https://empresa.com.br` |
-| `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
+| `ADMIN_PASSWORD` | Sim* | Senha de **primeiro acesso** ao painel (antes de existir usuários) | `SenhaForte@2026` |
+| `ADMIN_BREAK_GLASS` | Não | `true` reabre o login por `ADMIN_PASSWORD` mesmo com usuários cadastrados (emergência — ex.: único admin perdeu o 2FA). Deixe desligado | `false` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
@@ -741,8 +742,15 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 
 | Endpoint | Método | Descrição |
 |---|---|---|
-| `/api/admin/login` | POST | Login (gera cookie HMAC) |
+| `/api/admin/login` | POST | Login (usuário + senha; responde `mfaRequired` quando há 2FA) |
+| `/api/admin/login/mfa` | POST | Segundo fator (código TOTP) |
 | `/api/admin/logout` | POST | Logout |
+| `/api/admin/users` e `/api/admin/users/[id]` | GET/POST/PATCH/DELETE | Usuários do painel (admin) |
+| `/api/admin/account`, `/account/password`, `/account/totp` | GET/POST/PUT/DELETE | Conta logada: senha e 2FA |
+| `/api/admin/audit` | GET | Trilha de auditoria (JSON ou `?format=csv`) |
+| `/api/admin/access-rules` e `/[id]` | GET/POST/DELETE | Bloqueios e liberações |
+| `/api/admin/guests/authorize` | POST | Liberar dispositivo agora (sem portal) |
+| `/api/admin/guests/extend` | POST | Estender sessão de um guest |
 | `/api/admin/settings` | GET/POST | Branding + toggle requireToken |
 | `/api/admin/logs` | GET | Listagem paginada + CSV (inclui token) |
 | `/api/admin/guests/active` | GET | Sessões UniFi ativas |
@@ -817,12 +825,28 @@ npx prisma studio    # abre UI em http://localhost:5555
 
 ### 15.1 Proteção do painel admin
 
-O middleware [src/proxy.ts](src/proxy.ts) protege **tanto as páginas** (`/admin/*`) **quanto as APIs** (`/api/admin/*`):
+**Usuários, papéis e 2FA** (menu **Usuários** e **Minha conta**):
 
-- Sem cookie de sessão válido, páginas redirecionam para `/admin/login` e APIs respondem `401`.
-- Allowlist explícita: `/admin/login`, `/api/admin/login`, `/admin/logout`, `/api/admin/logout`.
-- Bypass por header `Authorization: Bearer ${CRON_SECRET}` é aceito **somente quando `CRON_SECRET` está definido com ≥ 16 caracteres**. Comparação em constant-time evita timing attack.
-- `POST /api/admin/login` tem rate limit de **5 tentativas por minuto por IP** e usa mensagem genérica (`Credenciais inválidas`) para senha errada e rate-limit, evitando enumeração.
+| Papel | Pode |
+|---|---|
+| **Administrador** | Tudo, inclusive Usuários, Auditoria, Conexão UniFi e Customização |
+| **Operador** | Operação do dia a dia: tokens/vouchers, sessões (desconectar, estender, bloquear), bloqueios e liberações, logs, reconciliação |
+| **Somente leitura** | Consultar dashboard, logs, sessões e tokens (apenas `GET`) |
+
+- **Primeiro acesso / atualização de versões antigas**: entre com usuário vazio (ou `admin`) e a senha `ADMIN_PASSWORD`, abra **Usuários** e crie o primeiro administrador. A partir daí o login por `ADMIN_PASSWORD` é desativado (a menos que `ADMIN_BREAK_GLASS=true`).
+- Senhas com **scrypt** (mínimo 10 caracteres, letras e números); **bloqueio de 15 min após 5 tentativas** erradas.
+- **2FA (TOTP)** opcional por usuário, compatível com Google/Microsoft Authenticator, Authy, 1Password. Um admin pode zerar o 2FA de outro usuário.
+- Trocar senha, papel, desativar ou zerar 2FA **derruba as sessões abertas** daquele usuário.
+- O middleware [src/proxy.ts](src/proxy.ts) valida a sessão no banco e aplica o **RBAC** a páginas (`/admin/*`) e APIs (`/api/admin/*`): sem sessão → login/`401`; sem permissão → `403`.
+- `POST /api/admin/login` tem rate limit por IP+usuário e mensagem genérica (`Credenciais inválidas`); logout só por `POST`.
+
+**Auditoria** (menu **Auditoria**, só admin): login (sucesso/falha), usuários, conta, Customização, marca por site, conexão UniFi, tokens (criar/revogar/estender/excluir), sessões (desconectar/estender/liberar CPF), bloqueios/liberações, uploads e limpeza — com usuário, data/hora, alvo, detalhes e IP. Exporta CSV.
+
+**Bloqueios e liberações** (menu **Bloqueios e liberações**):
+- **Bloquear** por MAC, CPF, e-mail ou documento (com motivo e validade opcional). O botão **Bloquear** na tela de Sessões bloqueia e desconecta o dispositivo na hora.
+- **Liberar dispositivo** (por MAC): o aparelho conecta com um clique, sem formulário nem token — útil para equipe e parceiros.
+- **Liberar agora (sem navegador)**: autoriza um MAC direto na UniFi por minutos/horas/dias — TVs, impressoras, consoles.
+- **Estender sessão**: na tela de Sessões, adiciona tempo a um convidado conectado.
 
 ### 15.2 Chamadas internas autenticadas (cron / scripts)
 

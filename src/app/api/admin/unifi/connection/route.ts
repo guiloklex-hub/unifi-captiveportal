@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import {
@@ -28,11 +29,18 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
   logger.info({ url: parsed.data.url, authMode: parsed.data.authMode }, "UniFi connection updated via admin");
+  await audit(req, "unifi.connection.update", parsed.data.url, {
+    authMode: parsed.data.authMode,
+    site: parsed.data.site,
+    apiKeyChanged: Boolean(parsed.data.apiKey) || Boolean(parsed.data.clearApiKey),
+    passwordChanged: Boolean(parsed.data.password) || Boolean(parsed.data.clearPassword),
+  });
   return NextResponse.json(await getConnectionView());
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   await resetConnection();
+  await audit(req, "unifi.connection.reset");
   logger.info("UniFi connection reset to .env");
   return NextResponse.json(await getConnectionView());
 }

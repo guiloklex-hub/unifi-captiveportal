@@ -8,6 +8,7 @@ const prismaMock = {
     upsert: vi.fn(),
   },
   accessToken: { updateMany: vi.fn() },
+  accessRule: { findFirst: vi.fn() },
   systemSettings: { findUnique: vi.fn(), upsert: vi.fn() },
   siteBranding: { findUnique: vi.fn() },
 };
@@ -61,6 +62,7 @@ const request = {
 beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.guestRegistration.upsert.mockResolvedValue({ id: 42 });
+  prismaMock.accessRule.findFirst.mockResolvedValue(null);
   authorizeGuest.mockResolvedValue(undefined);
   process.env.GUEST_UP_KBPS = "1024";
   delete process.env.PORTAL_SUCCESS_URL;
@@ -111,6 +113,32 @@ describe("grantGuestAccess", () => {
     authorizeGuest.mockRejectedValue(new UniFiUnavailableError("down"));
     const res = await grantGuestAccess(request, baseSettings, dict);
     expect(res).toEqual({ ok: false, status: 502, error: dict.portal.errServiceUnavailable });
+  });
+
+  it("regra de bloqueio impede o acesso antes da UniFi", async () => {
+    prismaMock.accessRule.findFirst.mockResolvedValue({ id: "r1", matchType: "document" });
+    const res = await grantGuestAccess(request, baseSettings, dict);
+    expect(res).toEqual({ ok: false, status: 403, error: dict.portal.errBlocked });
+    expect(authorizeGuest).not.toHaveBeenCalled();
+    const where = prismaMock.accessRule.findFirst.mock.calls[0][0].where;
+    expect(where.kind).toBe("block");
+    expect(where.AND[0].OR).toEqual(
+      expect.arrayContaining([
+        { matchType: "mac", value: "aa:bb:cc:dd:ee:ff" },
+        { matchType: "email", value: "ana@x.com" },
+        { matchType: "document", value: "AB12345" },
+      ]),
+    );
+  });
+
+  it("liberação do admin ignora token exigido e usa a duração informada", async () => {
+    const res = await grantGuestAccess(
+      { ...request, authMethod: "admin", adminGrant: { minutes: 43200 } },
+      { ...baseSettings, requireToken: true },
+      dict,
+    );
+    expect(res.ok).toBe(true);
+    expect(authorizeGuest.mock.calls[0][0].minutes).toBe(43200);
   });
 
   it("payload recusado → mensagem de falha de autorização", async () => {
