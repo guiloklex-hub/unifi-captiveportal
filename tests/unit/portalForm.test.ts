@@ -73,6 +73,30 @@ describe("formulário configurável", () => {
   });
 });
 
+describe("todos os erros aparecem juntos", () => {
+  it("termos não marcados não escondem o CPF inválido (regressão)", () => {
+    const res = getGuestRegistrationSchema(v, {}).safeParse({
+      mac: "aa:bb:cc:dd:ee:ff",
+      fullName: "Ana Lima",
+      email: "ana@x.com",
+      phone: "11912345678",
+      cpf: "11111111111",
+      acceptTerms: false,
+    });
+    const paths = res.error!.issues.map((i) => i.path[0]);
+    expect(paths).toEqual(expect.arrayContaining(["acceptTerms", "cpf"]));
+  });
+
+  it("token obrigatório vira erro de campo", () => {
+    const res = getGuestRegistrationSchema(v, { requireToken: true, fieldName: "hidden", fieldEmail: "hidden", fieldPhone: "hidden", fieldDocument: "hidden" }).safeParse({
+      mac: "aa:bb:cc:dd:ee:ff",
+      acceptTerms: true,
+      token: "abc",
+    });
+    expect(res.error?.issues[0]).toMatchObject({ path: ["token"], message: v.valTokenRequired });
+  });
+});
+
 describe("isValidIntlPhone", () => {
   it("exige + e 8 a 15 dígitos", () => {
     expect(isValidIntlPhone("+44 20 7946 0958")).toBe(true);

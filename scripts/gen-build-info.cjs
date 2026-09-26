@@ -16,8 +16,9 @@ function safeExec(cmd) {
   }
 }
 
-const sha = safeExec("git rev-parse --short HEAD") || "unknown";
-const branch = safeExec("git rev-parse --abbrev-ref HEAD") || "unknown";
+// GIT_SHA/GIT_BRANCH: builds sem .git (ex.: imagem Docker) recebem por build-arg.
+const sha = process.env.GIT_SHA || safeExec("git rev-parse --short HEAD") || "unknown";
+const branch = process.env.GIT_BRANCH || safeExec("git rev-parse --abbrev-ref HEAD") || "unknown";
 const builtAt = new Date().toISOString();
 const data = { sha, branch, builtAt };
 

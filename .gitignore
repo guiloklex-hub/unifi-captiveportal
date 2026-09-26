@@ -20,3 +20,8 @@ public/uploads/*
 .aider*coverage
 playwright-report
 test-results
+prisma/e2e.db*
+/*.db
+/*.db-journal
+/*.db-wal
+/*.db-shm

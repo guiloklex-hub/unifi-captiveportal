@@ -1,0 +1,25 @@
+# UniFi Captive Portal — produção com Docker.
+#
+#   cp .env.example .env   # edite UNIFI_*, ADMIN_PASSWORD, ADMIN_SECRET…
+#   docker compose up -d --build
+#
+# A controladora UniFi redireciona para http://IP_DO_SERVIDOR/guest/s/<site>/,
+# por isso a porta 80 do host é mapeada para o container.
+services:
+  portal:
+    build: .
+    image: unifi-captive-portal:latest
+    restart: unless-stopped
+    init: true
+    env_file: .env
+    environment:
+      # Dentro do container, banco e uploads ficam no volume /data.
+      DATABASE_URL: file:/data/portal.db
+      UPLOAD_DIR: /data/uploads
+    ports:
+      - "80:3000"
+    volumes:
+      - portal-data:/data
+
+volumes:
+  portal-data:

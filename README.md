@@ -1,90 +1,31 @@
 # UniFi Captive Portal + BI
 
-Portal Guest (External Portal Server) integrado com a controladora **Ubiquiti UniFi v10.1.89**, com painel administrativo, relatórios de BI, **sistema de tokens de acesso** e **customização total de branding**.
+Portal para convidados (**External Portal Server**) da **Ubiquiti UniFi**, com painel administrativo, BI, tokens/vouchers, LGPD e integrações. Código aberto, em português, com suporte a PT/EN/ES no portal.
 
----
+## Visão geral
 
-## ✨ Atualizações recentes (Junho 2026)
+| Área | Recursos |
+|---|---|
+| **Conexão UniFi** | **API Key** (API oficial, Network 9+) ou usuário/senha, com **fallback automático**; UniFi OS **e** Network Application clássica (5.x → 10.x); multi-site; tela de diagnóstico ("Testar conexão") |
+| **Portal** | Formulário configurável (ou **acesso rápido** só com termos), estrangeiros sem CPF, **convidado recorrente** (1 clique), **código de verificação** por e-mail/SMS, **login Google/Microsoft**, tokens/vouchers com QR, marca por site, PT/EN/ES |
+| **Painel** | Dashboard/BI, logs + CSV, sessões ao vivo (desconectar, **estender**, **bloquear**), **vouchers impressos**, bloqueios/liberações, liberar TVs/impressoras, **usuários com papéis + 2FA**, **auditoria** |
+| **LGPD** | Versão dos termos aceita por cadastro, consentimento de marketing separado, exportar/anonimizar dados do titular, retenção em dois níveis (Marco Civil: 1 ano) |
+| **Integrações** | Webhooks assinados, **API pública** com chaves e escopos, relatório por e-mail |
+| **Operação** | Docker, PM2, backup, health check, CI com testes unitários + E2E |
 
-### QR Code do token (deep-link)
-- Cada token agora tem um **QR code** disponível no painel admin (`/admin/tokens`).
-- Escanear o QR abre o portal já com o campo "Token de acesso" preenchido — o convidado só precisa completar nome/email/CPF.
-- Endpoint: `GET /api/admin/tokens/{id}/qr` (SVG por padrão; `?format=png` para PNG). Header `X-Token-DeepLink` retorna a URL embutida.
-- Deep-link gerado: `${PUBLIC_PORTAL_URL ?? host}/guest/s/{site}?token={code}`. Configure `PUBLIC_PORTAL_URL` (seção 5.1) com o domínio público para que o QR aponte para a URL real que o convidado consegue acessar.
-- Adiciona dependência `qrcode` (~50KB) + `@types/qrcode`.
+**Compatibilidade**: veja a seção **[6.1](#61-formas-de-conexão-e-compatibilidade)**. Resumo: consoles UniFi OS e UniFi OS Server (Network 9+) → API Key; Network Application clássica (porta 8443) → usuário/senha; o modo `auto` escolhe sozinho.
 
-### Indicadores ao vivo no dashboard
-- Nova seção `LiveCounters` no topo de `/admin` com 4 KPIs que se atualizam a cada 15s:
-  - **Tokens emitidos · 24h** — `accessToken.count` na janela.
-  - **Dispositivos online agora** — `listActiveGuests()` direto na controladora (graceful fallback para `—` quando a UniFi está down, não derruba o painel).
-  - **Tráfego processado · 24h** — soma de `bytesTx + bytesRx` em `GuestRegistration` na janela.
-  - **Uptime do serviço** — `process.uptime()`.
-- Endpoint: `GET /api/admin/live-metrics`.
+**Documentação complementar**: [CHANGELOG](CHANGELOG.md) · [Integrações e API](docs/integracoes.md) · [Proxy reverso nginx/HTTPS](docs/nginx.md)
 
-### Filtro multi-site no painel
-- Dropdown `SiteFilter` no topo de `/admin`, `/admin/logs` e `/admin/sessions`. Lista sites distintos derivados de `GuestRegistration.site` ∪ `AccessToken.site`.
-- Estado vive na query string (`?site=event-2026`), persiste entre navegações no admin. Selecionar "Todos os sites" remove o filtro.
-- `/api/admin/logs?site=...` (e CSV) aplicam o filtro; `/admin/sessions?site=...` repassa para `listActiveGuests(site)`; o dashboard propaga o filtro para todas as queries Prisma de `GuestRegistration` e `AccessToken`.
-- Endpoint: `GET /api/admin/sites` retorna `{ sites: [...] }`.
+### Início rápido (Docker)
 
----
+```bash
+git clone https://github.com/guiloklex-hub/unifi-captiveportal && cd unifi-captiveportal
+cp .env.example .env            # edite UNIFI_URL, UNIFI_API_KEY ou UNIFI_USERNAME/PASSWORD, ADMIN_PASSWORD, ADMIN_SECRET
+docker compose up -d --build    # portal em http://IP_DO_SERVIDOR/ (porta 80)
+```
 
-## ✨ Atualizações recentes (Maio 2026)
-
-### Dashboard ampliado — BI mais rico (sem novas dependências)
-- **Painel de tráfego (últimos 30 dias)** — totais de download/upload reconciliados, média por sessão, série temporal em `AreaChart` empilhada (TX/RX) e **top 10 consumidores** por CPF (nome, CPF mascarado, volume, sessões).
-- **Heatmap hora × dia da semana** — grade 7×24 com gradação de cor por intensidade, tooltips por célula. Substitui a leitura "linear" do pie de horários de pico por uma visualização de padrões semanais.
-- **Análise de dispositivos** — três donuts (sistema operacional, navegador, tipo de dispositivo) gerados via parser regex de `userAgent` em [src/lib/ua-parser.ts](src/lib/ua-parser.ts), sem dependência externa.
-- **Fingerprint analytics** — KPIs de fingerprints únicos + média por CPF + tabela de fingerprints **suspeitos** (mesmo fingerprint observado em CPFs distintos no período → sinal de compartilhamento ou spoofing).
-- **Tokens enriquecidos** — além das contagens existentes: **taxa média de aproveitamento** (`usedCount/maxUses`), **bytes consumidos por token** (últimos 30d) e lista de **tokens criados há >7d sem nenhum uso** (estoque parado para revisar antes de expirar).
-- Helpers reutilizáveis: [src/lib/format.ts](src/lib/format.ts) (`formatBytes`, `maskCpf`, `bigIntToNumber`).
-- Tudo computado a partir dos dados já capturados (`bytesTx/bytesRx`, `userAgent`, `fingerprint`, `tokenId`); sem novas tabelas, sem nova migration.
-
-## ✨ Atualizações recentes (Abril 2026)
-
-### Sistema de tokens de acesso
-- **Tokens criados pelo admin** com parâmetros próprios: duração da sessão, banda (down/up Kbps), quota de dados (MB), data/hora de expiração e número máximo de usos.
-- **Toggle global** "Exigir token de acesso" no painel — quando ativo, o campo aparece no formulário do guest; quando desativo, o fluxo padrão (apenas dados pessoais) é preservado.
-- **Locks via `.env`** — variáveis `TOKEN_LOCK_*` travam campos individuais do formulário admin (útil para padronizar políticas em deploys multi-cliente).
-- **Geração de código** com `crypto.randomBytes(12)` em base32 sem caracteres ambíguos (formato `XXXX-XXXX-XXXX`).
-- **Atomicidade**: reserva de uso via raw SQL `UPDATE ... WHERE usedCount < maxUses` evita race condition entre guests competindo pelo último uso.
-- **Idempotência**: re-autorização do mesmo MAC no mesmo dia não consome uso adicional do token.
-- **Compensação**: se a UniFi falhar após reserva, o uso é liberado automaticamente.
-- **Renovação** ("estender") — admin pode adicionar minutos à validade e/ou usos extras a tokens ainda ativos.
-- **Revogação em cascata** — ao revogar um token, opção de desconectar via UniFi todos os guests ativos que o usaram.
-
-### Multi-site UniFi
-- Cada token pode ser vinculado a um site específico da controladora; valor padrão `default`.
-- `authorizeGuest`, `unauthorizeGuest` e `listActiveGuests` aceitam parâmetro `site` opcional, com fallback para `UNIFI_SITE` do `.env`.
-
-### Métricas e auditoria
-- **Dashboard de tokens**: contagens por status (ativo/expirado/revogado/esgotado), tempo médio até primeiro uso, top 5 tokens mais utilizados.
-- **Coluna Token nos logs** (UI + CSV) — admin enxerga qual token autorizou cada guest.
-- **Endpoint de métricas dedicado** `/api/admin/tokens/metrics` para integrações.
-- **Reconciliação UniFi ↔ DB** — endpoint `POST /api/admin/reconcile` atualiza `bytesTx`, `bytesRx`, `lastSeenAt` consultando `/stat/guest`.
-
-### Segurança
-- **Fingerprint do dispositivo** (SHA-256 de UA + idioma + timezone + plataforma + tela + memória) gravado em cada autorização — sinal de defesa em profundidade contra MAC spoofing. Logs de warning quando o mesmo MAC + token retorna fingerprint diferente.
-- **Quota de dados** (`bytesQuotaMB`) agora persistida no `GuestRegistration` para auditoria.
-- **Endpoint público de sessão** `/api/portal/session/[id]` devolve apenas dados não-sensíveis (sem PII), com janela de 5 min após autorização.
-
-### UX
-- **Tela de sucesso enriquecida** — mostra tempo restante (atualizado a cada 30s), duração total, banda, quota e SSID.
-- **Máscara de token** no formulário — formatação automática `XXXX-XXXX-XXXX`, `autoCapitalize="characters"`, `spellCheck=false`.
-- **Tradução completa** das novas funcionalidades para PT/EN/ES.
-
-### Bloqueio de 1 dispositivo por CPF
-- **Toggle global** "Limitar a 1 dispositivo por CPF" em `SystemSettings` (default desligado) — impede que o mesmo CPF autorize um segundo MAC enquanto a sessão atual estiver viva (`authorizedAt + durationMin > agora`).
-- **Mesmo MAC sempre passa**: reautorização do dispositivo já registrado é idempotente (refresh, troca de dia, etc.).
-- **Bypass por token**: quando `requireToken=true` e o cliente apresenta token válido, o bloqueio não se aplica — o admin já controla via emissão do token.
-- **Override do admin**: botão "Liberar CPF" em `/admin/sessions` marca as sessões vivas como revogadas (`revokedAt`) e dispara `unauthorize` na UniFi (best-effort).
-- **Auditoria**: campo `GuestRegistration.revokedAt` distingue revogação manual de expiração natural, sem sujar `durationMin`.
-
-### Correções
-- **`UniFiUnavailableError`** corretamente reconhecida em catch (estava sendo coberta apenas pelo `export {}` no fim do arquivo — confirmamos funcionalidade).
-- **Filtro de payload UniFi** agora usa `typeof === "number" && > 0` em vez de truthy-coercion (`if (opts.upKbps)`), preservando intenção de "sem limite" via `0`/ausente.
-- **`prisma.$executeRaw`** convertido para `Number()` antes da comparação — defesa contra drivers que retornem `bigint`.
-- **Idempotência da reserva de token** — refresh do navegador / retentativa no mesmo dia não consome usos extras.
+Depois: acesse `/admin`, entre com `ADMIN_PASSWORD`, crie seu usuário em **Usuários** e configure a controladora em **Conexão UniFi** (seção 6). Sem Docker, siga as seções **1–3** (Node + PM2).
 
 ---
 
@@ -138,6 +79,23 @@ Tradução cobre:
 - `git`, `sqlite3` (CLI, usado pelo `scripts/backup.sh`), `openssl` (gerar segredos)
 
 ---
+
+## 0. Instalação com Docker (recomendado)
+
+```bash
+cp .env.example .env              # configure (seção 5)
+docker compose up -d --build      # build + start; migrações rodam sozinhas no boot
+docker compose logs -f portal     # acompanhar
+```
+
+- Banco SQLite e imagens enviadas ficam no volume `portal-data` (`/data` no container).
+- A porta 80 do host vai para o container (a UniFi redireciona para `http://IP/guest/s/<site>/`).
+- Health check embutido (`/api/healthz`); `restart: unless-stopped`.
+- Atualizar: `git pull && docker compose up -d --build`.
+- Backup: `docker compose exec portal sh -c 'cp /data/portal.db /data/backup-$(date +%F).db'` ou copie o volume.
+- Atrás de proxy corporativo com CA própria: `docker build --secret id=ca,src=ca.pem .`
+
+As seções 1–3 abaixo descrevem a instalação tradicional com Node + PM2.
 
 ## 1. Instalação do ambiente
 
@@ -280,6 +238,18 @@ npm run build
 pm2 reload unifi-portal       # zero downtime
 ```
 
+### 4.1.1 Atualizando de versões anteriores a esta revisão
+
+A revisão de 2026 (ver [CHANGELOG](CHANGELOG.md)) traz migrações de banco e algumas mudanças de comportamento. Passo a passo:
+
+1. **Backup** do banco (`scripts/backup.sh`) antes de tudo.
+2. Node **≥ 22.19** (recomendado 24): `node -v`.
+3. `git pull && npm ci && npx prisma migrate deploy && npm run build && pm2 reload unifi-portal`.
+4. **Login do painel**: entre com usuário vazio e a senha `ADMIN_PASSWORD` de sempre, vá em **Usuários** e crie seu administrador (a senha do `.env` deixa de valer depois do primeiro usuário). Sessões abertas antes da atualização precisarão entrar de novo.
+5. **Conexão UniFi**: nada muda se o `.env` já funcionava. Para usar **API Key**, crie a chave na UniFi (seção 6.1) e informe em **Conexão UniFi** → Testar → Salvar.
+6. **Retenção**: o padrão passou de 180 para **365 dias** (Marco Civil). Se quiser manter 180, defina `GUEST_RETENTION_DAYS=180`.
+7. Se o portal roda direto na porta 80 sem proxy reverso, considere o **nginx** (seção 4.7) para HTTPS no painel, IP real do cliente e login social.
+
 ### 4.2 Reset total
 
 ```bash
@@ -349,6 +319,10 @@ pm2 set pm2-logrotate:max_size 10M
 pm2 set pm2-logrotate:retain 14
 pm2 set pm2-logrotate:compress true
 ```
+
+### 4.7 Proxy reverso (nginx) e HTTPS
+
+Recomendado em produção: HTTPS no painel, IP real do cliente (rate limit, logs, busca de MAC por IP) e obrigatório para **login social**. Exemplo completo em **[docs/nginx.md](docs/nginx.md)**. Com HTTPS, defina `COOKIE_SECURE=true` e `PUBLIC_PORTAL_URL=https://…`.
 
 ---
 
@@ -650,7 +624,7 @@ Guia completo, formato dos eventos, verificação de assinatura e referência da
 | Portal Guest | `http://IP_DO_SERVIDOR/portal` |
 | Painel Admin | `http://IP_DO_SERVIDOR/admin` |
 
-A senha admin é `ADMIN_PASSWORD` do `.env`.
+No primeiro acesso, entre com `ADMIN_PASSWORD` do `.env` e crie os usuários do painel em **Usuários** (seção 15.1).
 
 ---
 
@@ -658,43 +632,36 @@ A senha admin é `ADMIN_PASSWORD` do `.env`.
 
 ```
 unifi-captive-portal/
-├── prisma/
-│   ├── schema.prisma                 # GuestRegistration, AccessToken, SystemSettings
-│   └── migrations/                   # Histórico de migrações
-├── public/
-│   └── uploads/                      # Imagens enviadas pelo admin
+├── prisma/                        # schema.prisma + migrações
+├── docs/                          # integracoes.md, nginx.md
+├── scripts/                       # backup.sh, mock-unifi.ts, docker-entrypoint.sh
+├── tests/
+│   ├── unit/                      # Vitest
+│   ├── e2e/                       # Playwright (portal + painel contra UniFi simulada)
+│   └── helpers/mockUnifi.ts       # Controladora UniFi simulada (OS/Classic/API oficial)
 ├── src/
+│   ├── proxy.ts                   # Autenticação, RBAC e CSRF do painel
 │   ├── app/
-│   │   ├── guest/s/[site]/           # Captura redirect UniFi
-│   │   ├── portal/                   # Formulário e tela de sucesso
-│   │   ├── admin/
-│   │   │   ├── page.tsx              # Dashboard (com métricas de tokens)
-│   │   │   ├── logs/                 # Logs de autorizações (com coluna Token)
-│   │   │   ├── sessions/             # Sessões UniFi ativas
-│   │   │   ├── tokens/               # CRUD de tokens
-│   │   │   └── settings/             # Customização + toggle requireToken
+│   │   ├── guest/s/[site]/        # Captura o redirect da UniFi
+│   │   ├── portal/                # Formulário, recorrente, código, social, sucesso
+│   │   ├── admin/(panel)/         # Dashboard, logs, sessões, tokens, bloqueios, customização,
+│   │   │                          # conexão UniFi, integrações, usuários, privacidade, auditoria, conta
+│   │   ├── admin/print/vouchers/  # Folha de vouchers para imprimir
 │   │   └── api/
-│   │       ├── portal/authorize/     # Autorização do guest (núcleo)
-│   │       ├── portal/session/[id]/  # Detalhes não-PII para tela de sucesso
-│   │       ├── admin/tokens/         # CRUD + metrics + locks
-│   │       ├── admin/reconcile/      # Reconciliação UniFi ↔ DB
-│   │       ├── admin/logs/           # Listagem + CSV (com Token)
-│   │       └── admin/settings/
-│   ├── components/
-│   │   ├── portal/                   # PortalForm, TermsModal
-│   │   └── admin/                    # Tabelas, charts, StatCards
+│   │       ├── portal/            # authorize, reconnect, otp/*, oauth/*, session
+│   │       ├── admin/             # APIs do painel (protegidas pelo proxy)
+│   │       └── v1/                # API pública (chaves ucp_…)
+│   ├── components/                # portal/, admin/, ui/ (shadcn)
 │   └── lib/
-│       ├── unifi/                    # Cliente UniFi (API Key + senha, fallback, multi-site, circuit breaker)
-│       ├── auth.ts                   # Sessão admin via HMAC
-│       ├── settings.ts               # SystemSettings com requireToken
-│       ├── tokens.ts                 # Geração, validação, reserva atômica
-│       ├── tokenLocks.ts             # Locks via .env
-│       ├── tokenValidators.ts        # Schemas Zod (create/extend)
-│       ├── reconcile.ts              # Reconciliação UniFi ↔ DB
-│       ├── fingerprint.ts            # Fingerprint client-side (SHA-256)
-│       ├── masks.ts
-│       ├── validators.ts             # Esquema Zod parametrizável (requireToken)
-│       └── i18n/dictionaries.ts      # PT/EN/ES
+│       ├── unifi/                 # Cliente UniFi: estratégias, API oficial, legada, transporte
+│       ├── portal/                # grantAccess (pipeline único), OTP, OAuth, regras, recorrente
+│       ├── admin/                 # senhas, TOTP, sessão, RBAC, auditoria, usuários
+│       ├── integrations/          # webhooks, chaves de API, métricas, relatórios
+│       ├── messaging/             # e-mail (SMTP) e SMS
+│       ├── privacy.ts             # LGPD: termos, anonimização, titular
+│       ├── settings.ts            # Configurações + marca por site + perfil padrão
+│       └── i18n/dictionaries.ts   # PT/EN/ES
+├── Dockerfile · docker-compose.yml · ecosystem.config.js (PM2)
 └── .env.example
 ```
 
@@ -806,13 +773,19 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 
 ## 13. Banco de dados
 
-SQLite criado em `prisma/dev.db` na primeira migração.
+SQLite (WAL) em `prisma/dev.db` (ou `/data/portal.db` no Docker). Principais modelos:
 
-**Modelo `GuestRegistration`** — registros de autorização: nome, e-mail, telefone, CPF, MAC, site UniFi, fingerprint, limites aplicados (downKbps/upKbps/bytesQuotaMB/durationMin), uso medido (bytesTx/bytesRx/lastSeenAt/reconciledAt), token vinculado.
-
-**Modelo `AccessToken`** — code, descrição, limites, maxUses/usedCount, expiresAt, revokedAt, firstUsedAt, site.
-
-**Modelo `SystemSettings`** — singleton com branding e `requireToken`.
+| Modelo | Conteúdo |
+|---|---|
+| `GuestRegistration` | Cada autorização: dados do convidado (conforme o formulário), MAC, IP, site, limites, uso medido, forma de acesso, versão dos termos, consentimento de marketing, anonimização |
+| `AccessToken` | Tokens/vouchers (limites, usos, validade, lote) |
+| `SystemSettings` / `SiteBranding` | Configurações globais e marca por site |
+| `UniFiConnection` | Conexão com a controladora salva pelo painel (segredos cifrados) |
+| `AdminUser` / `AuditLog` | Usuários do painel e trilha de auditoria |
+| `AccessRule` | Bloqueios e liberações |
+| `OtpChallenge` / `OAuthLogin` | Códigos de verificação e logins sociais em andamento (limpos em 24 h) |
+| `TermsVersion` | Texto de cada versão dos termos aceita |
+| `Webhook` / `ApiKey` | Integrações |
 
 ```bash
 npx prisma studio    # abre UI em http://localhost:5555
@@ -836,6 +809,12 @@ npx prisma studio    # abre UI em http://localhost:5555
 | Cron retorna `401 Não autorizado` ou `403 Origem inválida` | `CRON_SECRET` ausente, curto (< 16 chars) ou cron não envia o header `Authorization: Bearer` | Defina `CRON_SECRET` no `.env` (≥ 16 chars) e use o cron-exemplo da seção **4.3** que carrega a variável via `. /opt/unifi-captiveportal/.env` |
 | `scripts/backup.sh` falha com "sqlite3: command not found" | CLI ausente | `sudo apt install -y sqlite3` |
 | `bind EACCES 0.0.0.0:80` ao iniciar PM2 | Falta `setcap` na nova versão do Node | Refaça `sudo setcap 'cap_net_bind_service=+ep' $(which node)` (seção **1.4**) e `pm2 restart unifi-portal` |
+| "Nenhuma forma de conexão funcionou" em Conexão UniFi | URL/porta errada, certificado, credencial ou MFA na conta | Use **Testar conexão**: cada estratégia mostra o erro. Classic → `https://IP:8443` + usuário local sem MFA; UniFi OS → `https://IP` + API Key |
+| Convidado vê "Serviço temporariamente indisponível" | Controladora inalcançável ou credencial inválida | `/api/healthz` e **Conexão UniFi → Testar conexão**; veja os logs |
+| Esqueci a senha / perdi o 2FA do único admin | — | Defina `ADMIN_BREAK_GLASS=true`, entre com `ADMIN_PASSWORD`, redefina em **Usuários** e volte para `false` |
+| Botões de login social não aparecem | Falta HTTPS em `PUBLIC_PORTAL_URL` ou credenciais OAuth | Seção **8.2** |
+| Código por e-mail/SMS não chega | SMTP/SMS não configurado | Painel mostra aviso em Customização; veja **8.2** e os logs |
+| QR code do token abre "Acesso indisponível" | Sem proxy reverso informando o IP do cliente | Configure o nginx (**4.7**) — o portal então descobre o MAC pelo IP |
 | `Could not find a production build in .next` | `npm run build` não rodou nesse host após o `git pull` | Rode `npm run build` antes de `pm2 reload unifi-portal` (seção **4.1**) |
 
 ---
@@ -927,12 +906,12 @@ Controladoras UniFi em LAN normalmente apresentam certificado self-signed. Há d
 
 ## 16. Roadmap
 
-Funcionalidades planejadas (não entregues nesta versão):
+Entregue na revisão de 2026: API Key/fallback UniFi, formas de acesso (OTP, social, recorrente, acesso rápido), vouchers impressos, usuários/2FA/auditoria, bloqueios, LGPD, webhooks, API pública, relatórios, Docker e E2E — ver [CHANGELOG](CHANGELOG.md).
 
-- 2FA (TOTP) para o painel admin.
-- Bulk-create de tokens com export CSV.
-- QR Code do token (deep-link `/portal?token=...`).
-- Templates / presets de token.
-- Self-service por SSO (Google/Microsoft).
-- Webhooks de eventos de token (criado/usado/revogado/esgotado).
-- Trade-off de SQLite → Postgres + Redis quando passar de single-instance.
+Próximos passos possíveis:
+
+- Vários controladores UniFi em uma única instalação do portal (hoje: um por instância).
+- SQLite → PostgreSQL + Redis para rodar em múltiplas instâncias.
+- Criptografia opcional de CPF por coluna (com "blind index" para buscas exatas).
+- Conectores nativos de CRM (hoje via webhooks + n8n/Make/Zapier).
+- Wi‑Fi pago (PIX) e planos de acesso.
