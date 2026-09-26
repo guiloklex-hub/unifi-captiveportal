@@ -38,6 +38,9 @@ export function isValidBrazilCell(raw: string): boolean {
 
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 
+const MAC_RE = /^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$/i;
+const SITE_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
 export const getGuestRegistrationSchema = (
   dict: Dictionary["validation"],
   opts: { requireToken?: boolean } = {},
@@ -56,21 +59,32 @@ export const getGuestRegistrationSchema = (
       .refine(isValidBrazilCell, dict.valPhoneInvalid),
     cpf: z.string().transform(onlyDigits).refine(isValidCPF, dict.valCpfInvalid),
     acceptTerms: z.literal(true, { error: dict.valTermsRequired }),
-    mac: z
+    mac: z.string().trim().regex(MAC_RE, dict.valMacMissing),
+    // Campos injetados pela controladora na URL (ocultos no formulário). São
+    // saneados em vez de rejeitados: um valor inesperado não pode impedir o
+    // guest de se conectar.
+    apMac: z
       .string()
-      .trim()
-      .regex(
-        /^[0-9a-f]{2}([:-]?[0-9a-f]{2}){5}$/i,
-        dict.valMacMissing,
-      ),
-    apMac: z.string().optional().nullable(),
-    ssid: z.string().optional().nullable(),
-    site: z.string().optional().nullable(),
-    originalUrl: z.string().optional().nullable(),
+      .nullish()
+      .transform((v) => (v && MAC_RE.test(v.trim()) ? v.trim() : null)),
+    ssid: z
+      .string()
+      .nullish()
+      .transform((v) => (v ? v.slice(0, 64) : null)),
+    // Nome curto do site UniFi (vai para o path da API: /api/s/<site>/...).
+    site: z
+      .string()
+      .nullish()
+      .transform((v) => (v && SITE_RE.test(v.trim()) ? v.trim() : null)),
+    originalUrl: z
+      .string()
+      .nullish()
+      .transform((v) => (v ? v.slice(0, 2048) : null)),
     token: opts.requireToken
       ? z.string().trim().min(8, dict.valTokenRequired)
       : z.string().optional().nullable(),
     fingerprint: z.string().trim().min(16).max(128).optional().nullable(),
   });
 
-export type GuestRegistrationInput = z.infer<ReturnType<typeof getGuestRegistrationSchema>>;
+export type GuestRegistrationInput = z.output<ReturnType<typeof getGuestRegistrationSchema>>;
+export type GuestRegistrationFormValues = z.input<ReturnType<typeof getGuestRegistrationSchema>>;

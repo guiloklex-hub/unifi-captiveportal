@@ -6,11 +6,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const MIN_RETENTION_DAYS = 7;
-const DEFAULT_RETENTION_DAYS = 180;
+// Marco Civil da Internet (Lei 12.965/2014, art. 13): registros de conexão
+// devem ser guardados por 1 ano. Default alinhado a isso.
+const DEFAULT_RETENTION_DAYS = 365;
 
 /**
  * Limpeza diária: apaga GuestRegistration mais antigos que
- * GUEST_RETENTION_DAYS (default 180, mínimo 7). Autenticação herdada
+ * GUEST_RETENTION_DAYS (default 365, mínimo 7). Autenticação herdada
  * do middleware (cookie de admin OU Bearer CRON_SECRET).
  *
  * Cron típico (uma vez por dia, 03:30):

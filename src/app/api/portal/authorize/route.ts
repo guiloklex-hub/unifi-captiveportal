@@ -8,6 +8,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit, clientIp } from "@/lib/rateLimit";
 import { getSystemSettings } from "@/lib/settings";
 import { findActiveCpfOnOtherDevice } from "@/lib/cpfLock";
+import { sanitizeGuestRedirect } from "@/lib/safeRedirect";
 import {
   validateTokenForUse,
   reserveTokenUse,
@@ -23,21 +24,9 @@ export const runtime = "nodejs";
 
 const RATE_LIMIT_MAX = 10;
 const RATE_LIMIT_WINDOW_MS = 60_000;
-
-/**
- * Remove querystrings potencialmente sensíveis da URL original (tokens, códigos).
- * Mantém apenas scheme+host+path.
- */
-function sanitizeRedirect(url: string | null | undefined): string | null {
-  if (!url) return null;
-  try {
-    const parsed = new URL(url);
-    if (!/^https?:$/.test(parsed.protocol)) return null;
-    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
-  } catch {
-    return null;
-  }
-}
+// Teto global de segurança (todas as origens somadas) — protege a controladora
+// de rajadas sem penalizar eventos com muitos guests simultâneos.
+const RATE_LIMIT_GLOBAL_MAX = 600;
 
 export async function POST(req: NextRequest) {
   const locale = getLocale(req.headers.get("accept-language"));
@@ -48,26 +37,37 @@ export async function POST(req: NextRequest) {
   });
 
   const ip = clientIp(req.headers);
-  const rl = rateLimit(`authorize:${ip}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
-  if (!rl.allowed) {
-    logger.warn({ ip, resetAt: rl.resetAt }, "authorize rate-limited");
-    return NextResponse.json(
-      { error: "Muitas tentativas. Aguarde alguns segundos e tente novamente." },
-      { status: 429, headers: { "Retry-After": String(Math.ceil((rl.resetAt - Date.now()) / 1000)) } },
-    );
-  }
 
   let body: unknown;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "JSON inválido" }, { status: 400 });
+    return NextResponse.json({ error: dict.portal.errInvalidData }, { status: 400 });
+  }
+
+  // Why: sem proxy reverso (Node direto na porta 80, como no guia de instalação)
+  // não há cabeçalho com o IP do cliente e `clientIp` devolve "unknown" — todos
+  // os guests caíam no MESMO bucket (10/min no total). Nesse caso a chave passa
+  // a ser o MAC informado pela controladora.
+  const rawMac = typeof (body as { mac?: unknown })?.mac === "string"
+    ? (body as { mac: string }).mac.trim().toLowerCase()
+    : "";
+  const rlKey = ip !== "unknown" ? `ip:${ip}` : `mac:${rawMac || "none"}`;
+  const rl = rateLimit(`authorize:${rlKey}`, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS);
+  const rlGlobal = rateLimit("authorize:global", RATE_LIMIT_GLOBAL_MAX, RATE_LIMIT_WINDOW_MS);
+  if (!rl.allowed || !rlGlobal.allowed) {
+    const resetAt = !rl.allowed ? rl.resetAt : rlGlobal.resetAt;
+    logger.warn({ key: rlKey, global: !rlGlobal.allowed, resetAt }, "authorize rate-limited");
+    return NextResponse.json(
+      { error: dict.portal.errRateLimited },
+      { status: 429, headers: { "Retry-After": String(Math.ceil((resetAt - Date.now()) / 1000)) } },
+    );
   }
 
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Dados inválidos", issues: z.flattenError(parsed.error) },
+      { error: dict.portal.errInvalidData, issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }
@@ -206,12 +206,9 @@ export async function POST(req: NextRequest) {
     const message = err instanceof Error ? err.message : "Erro desconhecido";
     const isDown = err instanceof UniFiUnavailableError;
     log.error({ err: message, isDown }, "UniFi authorize failed");
+    // Detalhes da controladora (paths, respostas) ficam só no log — não vazam ao guest.
     return NextResponse.json(
-      {
-        error: isDown
-          ? "Serviço temporariamente indisponível. Tente novamente em alguns instantes."
-          : `Não foi possível liberar o acesso: ${message}`,
-      },
+      { error: isDown ? dict.portal.errServiceUnavailable : dict.portal.errAuthorizeFailed },
       { status: 502 },
     );
   }
@@ -267,7 +264,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       ok: true,
       id: null,
-      redirect: sanitizeRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
+      redirect: sanitizeGuestRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
     });
   }
 
@@ -276,6 +273,6 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     id: createdId,
-    redirect: sanitizeRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
+    redirect: sanitizeGuestRedirect(process.env.PORTAL_SUCCESS_URL ?? data.originalUrl),
   });
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getGuestRegistrationSchema, isValidBrazilCell, isValidCPF, onlyDigits } from "@/lib/validators";
 import { dictionaries } from "@/lib/i18n/dictionaries";
+import { settingsSchema } from "@/lib/settingsValidators";
 
 describe("isValidCPF", () => {
   it("aceita CPFs válidos com e sem máscara", () => {
@@ -68,5 +69,41 @@ describe("getGuestRegistrationSchema", () => {
     const withToken = getGuestRegistrationSchema(dictionaries.pt.validation, { requireToken: true });
     expect(withToken.safeParse(valid).success).toBe(false);
     expect(withToken.safeParse({ ...valid, token: "ABCD-EFGH-JKMN" }).success).toBe(true);
+  });
+
+  it("saneia campos injetados pela controladora sem bloquear o guest", () => {
+    const parsed = getGuestRegistrationSchema(dictionaries.pt.validation).parse({
+      ...valid,
+      apMac: "não-é-mac",
+      site: "../../cmd/devmgr",
+      ssid: "x".repeat(100),
+    });
+    expect(parsed.apMac).toBeNull();
+    expect(parsed.site).toBeNull();
+    expect(parsed.ssid).toHaveLength(64);
+  });
+
+  it("mantém site e apMac válidos", () => {
+    const parsed = getGuestRegistrationSchema(dictionaries.pt.validation).parse({
+      ...valid,
+      apMac: "aa:bb:cc:00:11:22",
+      site: "evento-2026",
+    });
+    expect(parsed.site).toBe("evento-2026");
+    expect(parsed.apMac).toBe("aa:bb:cc:00:11:22");
+  });
+});
+
+describe("settingsSchema", () => {
+  const base = { brandName: "Marca", primaryColor: "#112233", termsOfUse: "" };
+
+  it("aceita a URL devolvida pelo upload (/api/uploads/...)", () => {
+    expect(settingsSchema.safeParse({ ...base, logoUrl: "/api/uploads/1700000000000-ab12.png" }).success).toBe(true);
+    expect(settingsSchema.safeParse({ ...base, logoUrl: "/uploads/legado.png" }).success).toBe(true);
+  });
+
+  it("recusa schemes perigosos e caminhos com traversal", () => {
+    expect(settingsSchema.safeParse({ ...base, logoUrl: "javascript:alert(1)" }).success).toBe(false);
+    expect(settingsSchema.safeParse({ ...base, logoUrl: "/api/uploads/../x" }).success).toBe(false);
   });
 });

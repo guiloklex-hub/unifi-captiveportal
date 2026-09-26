@@ -6,8 +6,8 @@ import { logger } from "./logger";
  * Reconcilia o estado de sessões UniFi com o GuestRegistration local:
  * atualiza bytesTx/bytesRx/lastSeenAt para cada MAC ativo na controladora.
  *
- * Estratégia: agrupa guests UniFi por MAC, busca o registro mais recente
- * por MAC, faz update em massa. Tolerante a erro — logs para diagnóstico.
+ * Estratégia: busca numa única consulta o registro mais recente de cada MAC
+ * ativo e atualiza cada um. Tolerante a erro — logs para diagnóstico.
  */
 export async function reconcileActiveSessions(siteOverride?: string | null): Promise<{
   ok: boolean;
@@ -28,20 +28,33 @@ export async function reconcileActiveSessions(siteOverride?: string | null): Pro
   const now = new Date();
   let updated = 0;
 
+  const macs = [...new Set(unifiGuests.filter((g) => g.mac).map((g) => g.mac.toLowerCase()))];
+  if (macs.length === 0) {
+    logger.info({ active: unifiGuests.length, updated, ms: Date.now() - startedAt }, "Reconcile cycle complete");
+    return { ok: true, active: unifiGuests.length, updated };
+  }
+
+  // Uma consulta para todos os MACs (antes: 1 findFirst por guest ativo — N+1).
+  // Ordenado DESC: o primeiro registro visto por MAC é o mais recente.
+  const rows = await prisma.guestRegistration.findMany({
+    where: { macAddress: { in: macs } },
+    orderBy: { authorizedAt: "desc" },
+    select: { id: true, macAddress: true },
+  });
+  const latestIdByMac = new Map<string, number>();
+  for (const r of rows) {
+    if (!latestIdByMac.has(r.macAddress)) latestIdByMac.set(r.macAddress, r.id);
+  }
+
   for (const g of unifiGuests) {
     if (!g.mac) continue;
     const mac = g.mac.toLowerCase();
-    // Busca o registro mais recente para este MAC (em qualquer dia).
-    const reg = await prisma.guestRegistration.findFirst({
-      where: { macAddress: mac },
-      orderBy: { authorizedAt: "desc" },
-      select: { id: true },
-    });
-    if (!reg) continue;
+    const id = latestIdByMac.get(mac);
+    if (id === undefined) continue;
 
     try {
       await prisma.guestRegistration.update({
-        where: { id: reg.id },
+        where: { id },
         data: {
           bytesTx: typeof g.tx_bytes === "number" ? BigInt(g.tx_bytes) : null,
           bytesRx: typeof g.rx_bytes === "number" ? BigInt(g.rx_bytes) : null,

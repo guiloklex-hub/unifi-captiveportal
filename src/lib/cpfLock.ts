@@ -42,15 +42,20 @@ export async function findActiveCpfOnOtherDevice(
   return null;
 }
 
+export interface RevokedDevice {
+  mac: string;
+  site: string | null;
+}
+
 /**
  * Marca como revogadas todas as sessões vivas (revokedAt IS NULL) de um CPF.
- * Retorna a lista de MACs afetados para que o caller possa propagar o
- * unauthorize na UniFi (best-effort, fora desta função).
+ * Retorna os pares MAC+site afetados para que o caller possa propagar o
+ * unauthorize na UniFi no site correto (best-effort, fora desta função).
  */
-export async function revokeActiveCpfSessions(cpf: string): Promise<string[]> {
+export async function revokeActiveCpfSessions(cpf: string): Promise<RevokedDevice[]> {
   const rows = await prisma.guestRegistration.findMany({
     where: { cpf, revokedAt: null },
-    select: { macAddress: true },
+    select: { macAddress: true, site: true },
   });
 
   if (rows.length === 0) return [];
@@ -60,5 +65,7 @@ export async function revokeActiveCpfSessions(cpf: string): Promise<string[]> {
     data: { revokedAt: new Date() },
   });
 
-  return [...new Set(rows.map((r) => r.macAddress))];
+  const unique = new Map<string, RevokedDevice>();
+  for (const r of rows) unique.set(`${r.macAddress}|${r.site ?? ""}`, { mac: r.macAddress, site: r.site });
+  return [...unique.values()];
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getSystemSettings } from "@/lib/settings";
+import { contrastForeground } from "@/lib/utils";
 import "./globals.css";
 
 export const dynamic = "force-dynamic";
@@ -18,17 +19,14 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html lang="pt-BR">
       <head>
-        <style dangerouslySetInnerHTML={{ __html: `
-          :root {
-            --primary: ${settings.primaryColor};
-            --primary-foreground: 210 40% 98%;
-          }
-          .bg-primary { background-color: var(--primary) !important; }
-          .text-primary { color: var(--primary) !important; }
-          .border-primary { border-color: var(--primary) !important; }
-          .ring-primary { --tw-ring-color: var(--primary) !important; }
-          .bg-primary:hover { filter: brightness(0.9); }
-        ` }} />
+        {/* Cor da marca sobrescreve o token do Tailwind 4 (`--color-primary`).
+            `:root:root` ganha em especificidade do `:root` gerado pelo @theme.
+            primaryColor é validado como hex em getSystemSettings(). */}
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `:root:root { --color-primary: ${settings.primaryColor}; --color-primary-foreground: ${contrastForeground(settings.primaryColor)}; --color-ring: ${settings.primaryColor}; }`,
+          }}
+        />
       </head>
       <body className="min-h-screen antialiased">
         {children}

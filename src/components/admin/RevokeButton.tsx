@@ -4,7 +4,15 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
 
-export function RevokeButton({ mac, dict }: { mac: string; dict: Dictionary }) {
+export function RevokeButton({
+  mac,
+  site,
+  dict,
+}: {
+  mac: string;
+  site?: string | null;
+  dict: Dictionary;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -15,7 +23,7 @@ export function RevokeButton({ mac, dict }: { mac: string; dict: Dictionary }) {
     const res = await fetch("/api/admin/guests/revoke", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mac }),
+      body: JSON.stringify({ mac, site: site ?? null }),
     });
     if (!res.ok) {
       const j = await res.json().catch(() => ({}));

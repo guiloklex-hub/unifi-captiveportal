@@ -330,7 +330,7 @@ Restore: `gunzip < /var/backups/unifi-portal/portal-XYZ.db.gz > prisma/dev.db &&
 
 ### 4.5 Retenção de logs de guest
 
-Apaga `GuestRegistration` mais antigos que `GUEST_RETENTION_DAYS` (default 180, mínimo 7):
+Apaga `GuestRegistration` mais antigos que `GUEST_RETENTION_DAYS` (default **365**, mínimo 7). O default de 1 ano segue o art. 13 do Marco Civil da Internet (guarda de registros de conexão):
 
 ```bash
 # Cron diário às 03:30
@@ -373,7 +373,7 @@ Todas ficam no arquivo `.env`.
 | `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
-| `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 180) | `180` |
+| `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 | `PUBLIC_PORTAL_URL` | Não | URL pública (com protocolo) usada para gerar deep-links de QR de token. Se vazio, usa o `Host` da requisição admin — que pode ser interno (`127.0.0.1`) e inviável para escanear. | `https://wifi.empresa.com.br` |
 
@@ -530,7 +530,9 @@ Painel Admin → **Customização**:
 - **Nome da Marca**
 - **Logotipo** (upload local ou URL externa)
 - **Plano de fundo**
-- **Cor primária** (hex)
+- **Cor primária** (hex) — a cor do texto sobre botões é escolhida automaticamente (preto ou branco) para manter contraste legível.
+
+Uploads aceitam **PNG, JPEG, WebP ou GIF** até **5 MB**. O tipo é detectado pelo conteúdo do arquivo (SVG é recusado por poder conter script) e o nome é gerado pelo servidor. O diretório padrão é `public/uploads/`; use `UPLOAD_DIR` para apontar outro caminho (ex.: volume persistente).
 - **Termos de uso** (Markdown, modal otimizado para mobile)
 - **Exigir token de acesso** (toggle)
 
@@ -693,7 +695,8 @@ npx prisma studio    # abre UI em http://localhost:5555
 - **Mínimo necessário**: a tela de sucesso lê via endpoint dedicado que **não devolve** CPF, e-mail, telefone — apenas duração, banda, quota, SSID.
 - **Tokens em texto plano no DB**: aceito como tradeoff (curta validade, baixo blast radius). Recomenda-se cifrar o disco do servidor.
 - **HMAC** assina o cookie de sessão admin (TTL 12h, `httpOnly`, `sameSite=lax`).
-- **Rate limit**: 10 req/min/IP em `/api/portal/authorize`.
+- **Rate limit**: 10 req/min por IP em `/api/portal/authorize` (quando não há proxy reverso informando o IP, a chave passa a ser o MAC do dispositivo) + teto global de 600 req/min.
+- **Cabeçalhos de segurança** em todas as rotas: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.
 - **`COOKIE_SECURE=true`** em produção HTTPS.
 
 ### 15.1 Proteção do painel admin
@@ -737,7 +740,7 @@ Controladoras UniFi em LAN normalmente apresentam certificado self-signed. Há d
 - Nomes (`brandName`): até **120 caracteres**.
 - Termos de uso: até **8000 caracteres**.
 - Cor primária: hex `#RRGGBB`.
-- `logoUrl`/`backgroundUrl`: aceitos apenas como **caminho relativo** `/uploads/...` ou URL absoluta `http(s)://`. Schemes `javascript:`, `data:`, `vbscript:` são rejeitados — defende contra XSS via `<img src>` injetado no painel.
+- `logoUrl`/`backgroundUrl`: aceitos apenas como **caminho de upload local** (`/api/uploads/<arquivo>`, ou o legado `/uploads/...`) ou URL absoluta `http(s)://`. Schemes `javascript:`, `data:`, `vbscript:` são rejeitados — defende contra XSS via `<img src>` injetado no painel.
 
 ---
 
