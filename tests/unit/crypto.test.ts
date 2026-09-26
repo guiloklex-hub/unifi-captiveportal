@@ -11,9 +11,11 @@ describe("encryptSecret / decryptSecret", () => {
   });
 
   it("detecta adulteração (GCM)", () => {
-    const enc = encryptSecret("x");
+    const enc = encryptSecret("segredo-com-varios-bytes");
     const parts = enc.split(":");
-    parts[4] = Buffer.from("y").toString("base64");
+    const ct = Buffer.from(parts[4], "base64");
+    ct[0] ^= 0xff; // inverte bits do 1º byte: garante texto cifrado diferente
+    parts[4] = ct.toString("base64");
     expect(() => decryptSecret(parts.join(":"))).toThrow();
   });
 

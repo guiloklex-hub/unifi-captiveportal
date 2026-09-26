@@ -11,6 +11,7 @@ import { circuitState } from "./http";
 import {
   clearIntegrationCache,
   integrationAuthorizeGuest,
+  integrationFindMacByIp,
   integrationListDevices,
   integrationListGuests,
   integrationListSites,
@@ -23,6 +24,7 @@ import {
   probeVariant,
   ensureLegacySession,
   legacyAuthorizeGuest,
+  legacyFindMacByIp,
   legacyListDevices,
   legacyListGuests,
   legacyListSites,
@@ -161,6 +163,19 @@ export async function listActiveGuests(siteOverride?: string | null): Promise<Un
     return strategy === "integration"
       ? integrationListGuests(cfg, site)
       : legacyListGuests(cfg, site, legacyAuthOf(strategy));
+  });
+}
+
+/**
+ * MAC do cliente conectado com este IP (ou null). Usado quando o portal é aberto
+ * sem o `?id=<mac>` da controladora — ex.: QR code de token aberto pela câmera.
+ */
+export async function findClientMacByIp(ip: string, siteOverride?: string | null): Promise<string | null> {
+  return run("meta", (cfg, strategy) => {
+    const site = resolveSite(cfg, siteOverride);
+    return strategy === "integration"
+      ? integrationFindMacByIp(cfg, site, ip)
+      : legacyFindMacByIp(cfg, site, ip, legacyAuthOf(strategy));
   });
 }
 

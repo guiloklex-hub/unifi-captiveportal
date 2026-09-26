@@ -373,6 +373,8 @@ Todas ficam no arquivo `.env`.
 | `GUEST_DURATION_MIN` | Não | Duração padrão (minutos), usada quando guest autoriza sem token | `480` |
 | `GUEST_DOWN_KBPS` | Não | Limite de download padrão (Kbps) | `5120` |
 | `GUEST_UP_KBPS` | Não | Limite de upload padrão (Kbps) | `2048` |
+| `GUEST_QUOTA_MB` | Não | Cota de dados padrão (MB) | `1024` |
+| `PORTAL_MAC_LOOKUP` | Não | `false` desativa a busca do MAC pelo IP quando o portal é aberto sem `?id=` (ex.: QR code) | `true` |
 | `PORTAL_SUCCESS_URL` | Não | Redirect após autorização | `https://empresa.com.br` |
 | `ADMIN_PASSWORD` | Sim | Senha do painel admin | `SenhaForte@2026` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
@@ -579,10 +581,36 @@ Painel Admin → **Customização**:
 - **Logotipo** (upload local ou URL externa)
 - **Plano de fundo**
 - **Cor primária** (hex) — a cor do texto sobre botões é escolhida automaticamente (preto ou branco) para manter contraste legível.
-
-Uploads aceitam **PNG, JPEG, WebP ou GIF** até **5 MB**. O tipo é detectado pelo conteúdo do arquivo (SVG é recusado por poder conter script) e o nome é gerado pelo servidor. O diretório padrão é `public/uploads/`; use `UPLOAD_DIR` para apontar outro caminho (ex.: volume persistente).
 - **Termos de uso** (Markdown, modal otimizado para mobile)
 - **Exigir token de acesso** (toggle)
+
+Uploads aceitam **PNG, JPEG, WebP ou GIF** até **5 MB**. O tipo é detectado pelo conteúdo do arquivo (SVG é recusado por poder conter script) e o nome é gerado pelo servidor. O diretório padrão é `public/uploads/`; use `UPLOAD_DIR` para apontar outro caminho (ex.: volume persistente).
+
+### 8.1 Formas de acesso (todas opcionais)
+
+Tudo fica em **Customização** e vem **desligado/idêntico ao comportamento anterior** por padrão:
+
+| Recurso | Como ativar | O que faz |
+|---|---|---|
+| **Formulário configurável** | Nome, e-mail, celular e CPF/documento: *Obrigatório*, *Opcional* ou *Não pedir* | Coleta só o necessário (princípio da minimização da LGPD) |
+| **Acesso rápido** | Todos os campos em *Não pedir* | O convidado só aceita os termos |
+| **Estrangeiros sem CPF** | "Aceitar estrangeiros sem CPF" | Opção "Não tenho CPF": passaporte + telefone internacional (`+código do país`). Sugerida automaticamente quando o navegador não está em português |
+| **Convidado recorrente** | "Lembrar dispositivos por (dias)" > 0 | Quem já se cadastrou no aparelho reconecta com **um clique** ("Bem-vindo(a) de volta, Maria!"). Não vale quando o token é exigido nem se o admin revogou a última sessão. Só o primeiro nome é exibido (MAC pode ser clonado) |
+| **Perfil padrão de acesso** | Duração, download, upload e cota | Aplicado a quem entra sem token. Em branco = `GUEST_*` do `.env`; `0` = sem limite |
+| **Marca por site** | "Aplicar a: Somente o site X" | Nome, logo, fundo, cor e termos diferentes por site UniFi; campos em branco herdam a marca padrão |
+| **Pré-visualização** | Botão "Pré-visualizar portal" | Abre o portal como o convidado verá, com envio desativado |
+
+O dashboard ganhou o gráfico **Formas de acesso** e passa a contar visitantes únicos por uma *chave de visitante* (CPF → documento → e-mail → MAC), que funciona com qualquer configuração de formulário.
+
+### 8.2 Vouchers impressos
+
+Em **Tokens → Novo token**, informe **Quantidade** (até 500) para criar um lote de tokens idênticos e clique em **Imprimir vouchers**: a folha A4 traz 8 cartões por página com QR code, código, tempo de acesso, validade e (opcional) o nome da rede Wi‑Fi. Lotes antigos podem ser reimpressos pelo botão **Imprimir lote** na lista.
+
+> **Por que não os vouchers nativos da UniFi?** Os vouchers do Hotspot da UniFi são validados pelo portal *interno* da controladora. Com portal externo (este projeto) não há API para validar/consumir um voucher UniFi — por isso o portal usa o próprio sistema de tokens, que tem os mesmos recursos (tempo, banda, cota, usos, validade) e ainda gera QR code.
+
+### 8.3 Portal aberto sem MAC (QR code)
+
+Quando o celular abre o link do QR code direto na câmera, a URL não traz o `?id=<MAC>` que a controladora injeta. O portal então procura o MAC na controladora **pelo IP do cliente** e segue normalmente. Requer proxy reverso que informe o IP real (`X-Real-IP` / `X-Forwarded-For`); desative com `PORTAL_MAC_LOOKUP=false`.
 
 ---
 
@@ -687,6 +715,7 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/portal/success` | GET | Tela de sucesso com detalhes da sessão |
 | `/api/portal/authorize` | POST | Valida token, autoriza UniFi, persiste guest. Rate-limit 10 req/min/IP |
 | `/api/portal/session/[id]` | GET | Detalhes não-PII da sessão (janela 5min) |
+| `/api/portal/reconnect` | POST | Reconexão em 1 clique de dispositivo reconhecido |
 
 ### Administrativos
 
@@ -707,6 +736,8 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/api/admin/dns-logs` | GET | Atividade DNS via AdGuard Home |
 | `/api/admin/upload` | POST | Upload de imagens (logo/background) |
 | `/api/admin/unifi/connection` | GET/PUT/DELETE | Conexão UniFi salva no painel (segredos nunca retornam) |
+| `/api/admin/branding/[site]` | GET/PUT/DELETE | Marca por site (campos nulos herdam a marca padrão) |
+| `/admin/print/vouchers?batch=` | GET | Folha de impressão de vouchers (página) |
 | `/api/admin/unifi/test` | POST | Diagnóstico da conexão (configuração atual ou rascunho do formulário) |
 | `/api/admin/sites` | GET | Sites para filtros (banco ∪ controladora) |
 

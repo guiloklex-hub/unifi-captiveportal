@@ -30,6 +30,13 @@ model GuestRegistration {
   lastSeenAt   DateTime?
   reconciledAt DateTime?
   revokedAt    DateTime?
+  /// Documento não-CPF (ex.: passaporte de estrangeiro). `cpf` fica vazio nesse caso.
+  documentType String?
+  document     String?
+  /// Identidade do visitante para BI: cpf | doc:<documento> | email:<email> | mac:<mac>.
+  visitorKey   String    @default("")
+  /// form | token | returning (e, na Fase 2b, otp-email | otp-sms | google | microsoft)
+  authMethod   String    @default("form")
 
   tokenId String?
   token   AccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
@@ -42,6 +49,7 @@ model GuestRegistration {
   @@index([fingerprint])
   @@index([site, authorizedAt])
   @@index([cpf, revokedAt, authorizedAt])
+  @@index([visitorKey])
 }
 
 model AccessToken {
@@ -59,12 +67,15 @@ model AccessToken {
   site         String    @default("default")
   createdAt    DateTime  @default(now())
   firstUsedAt  DateTime?
+  /// Tokens criados juntos ("vouchers em lote") compartilham o mesmo batchId.
+  batchId      String?
 
   registrations GuestRegistration[]
 
   @@index([code])
   @@index([expiresAt])
   @@index([site])
+  @@index([batchId])
 }
 
 model SystemSettings {
@@ -76,7 +87,36 @@ model SystemSettings {
   termsOfUse        String   @default("Ao conectar, você aceita os termos de uso e a política de privacidade.")
   requireToken      Boolean  @default(false)
   singleDeviceByCpf Boolean  @default(false)
-  updatedAt         DateTime @updatedAt
+
+  /// Perfil padrão de acesso (sem token). Nulo = usa GUEST_* do .env.
+  defaultDurationMin Int?
+  defaultDownKbps    Int?
+  defaultUpKbps      Int?
+  defaultQuotaMB     Int?
+
+  /// Campos do formulário: required | optional | hidden.
+  /// Todos "hidden" = acesso rápido (apenas aceite dos termos).
+  fieldName     String  @default("required")
+  fieldEmail    String  @default("required")
+  fieldPhone    String  @default("required")
+  fieldDocument String  @default("required")
+  /// Permite estrangeiros sem CPF (passaporte + telefone internacional).
+  allowForeignDocument Boolean @default(false)
+  /// Reconhece dispositivos que já se cadastraram nos últimos N dias (0 = desligado).
+  rememberDeviceDays   Int     @default(0)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// Sobrescritas de marca por site UniFi. Campos nulos herdam de SystemSettings.
+model SiteBranding {
+  site          String   @id
+  brandName     String?
+  logoUrl       String?
+  backgroundUrl String?
+  primaryColor  String?
+  termsOfUse    String?
+  updatedAt     DateTime @updatedAt
 }
 
 /// Conexão com a controladora configurada pelo painel. Quando existe, tem

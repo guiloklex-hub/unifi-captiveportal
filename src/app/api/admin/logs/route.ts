@@ -13,11 +13,13 @@ type LogRow = {
   id: number;
   nome: string;
   cpf: string;
+  documento: string;
   email: string;
   telefone: string;
   mac: string;
   ssid: string;
   site: string;
+  formaAcesso: string;
   tokenCode: string;
   tokenDescription: string;
   autorizadoEm: string;
@@ -27,11 +29,13 @@ const CSV_COLUMNS: CSVColumn<LogRow>[] = [
   { key: "id", header: "ID" },
   { key: "nome", header: "Nome" },
   { key: "cpf", header: "CPF" },
+  { key: "documento", header: "Documento (estrangeiro)" },
   { key: "email", header: "E-mail" },
   { key: "telefone", header: "Telefone" },
   { key: "mac", header: "MAC" },
   { key: "ssid", header: "SSID" },
   { key: "site", header: "Site" },
+  { key: "formaAcesso", header: "Forma de acesso" },
   { key: "tokenCode", header: "Token" },
   { key: "tokenDescription", header: "Token (descrição)" },
   { key: "autorizadoEm", header: "Autorizado em" },
@@ -49,6 +53,8 @@ function buildWhere(sp: URLSearchParams): Prisma.GuestRegistrationWhereInput {
       { fullName: { contains: q } },
       { cpf: { contains: q.replace(/\D+/g, "") } },
       { email: { contains: q } },
+      { document: { contains: q.toUpperCase() } },
+      { macAddress: { contains: q.toLowerCase() } },
     ];
   }
   if (from || to) {
@@ -95,11 +101,13 @@ export async function GET(req: NextRequest) {
                 id: r.id,
                 nome: r.fullName,
                 cpf: r.cpf,
+                documento: r.document ? `${r.documentType ?? "doc"}: ${r.document}` : "",
                 email: r.email,
                 telefone: r.phone,
                 mac: r.macAddress,
                 ssid: r.ssid ?? "",
                 site: r.site ?? "",
+                formaAcesso: r.authMethod,
                 tokenCode: r.token?.code ?? "",
                 tokenDescription: r.token?.description ?? "",
                 autorizadoEm: r.authorizedAt.toISOString(),
