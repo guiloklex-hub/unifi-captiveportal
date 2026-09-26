@@ -3,20 +3,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { getTokenLocks } from "@/lib/tokenLocks";
 import { settingsSchema } from "@/lib/settingsValidators";
+import { getSystemSettings, invalidateSystemSettingsCache } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const settings = await prisma.systemSettings.findUnique({
-    where: { id: "config" },
-  });
-  const locks = getTokenLocks();
-  // Quando há lock de requireToken, o valor efetivo vem da env e ignora o BD.
-  const effective = locks.requireToken !== undefined
-    ? { ...settings, requireToken: locks.requireToken }
-    : settings;
-  return NextResponse.json(effective ?? {});
+  // Valor efetivo: locks de `.env` (ex.: TOKEN_LOCK_REQUIRE) já aplicados.
+  return NextResponse.json(await getSystemSettings());
 }
 
 export async function POST(req: NextRequest) {
@@ -68,6 +62,7 @@ export async function POST(req: NextRequest) {
       singleDeviceByCpf,
     },
   });
+  invalidateSystemSettingsCache();
 
   return NextResponse.json(settings);
 }

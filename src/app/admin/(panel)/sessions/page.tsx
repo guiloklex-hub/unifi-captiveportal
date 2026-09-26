@@ -49,7 +49,8 @@ export default async function SessionsPage({
       const mac = g.mac.toLowerCase();
       // Em algumas versões da UniFi, o campo authorized pode vir ausente (undefined)
       // Portanto, só ocultamos se for explicitamente false (não autorizado).
-      if (g.authorized === false || seen.has(mac)) return false;
+      // `expired` indica sessão de guest encerrada que o /stat/guest ainda lista.
+      if (g.authorized === false || g.expired === true || seen.has(mac)) return false;
       seen.add(mac);
       return true;
     });
@@ -142,7 +143,7 @@ export default async function SessionsPage({
                       {settings.singleDeviceByCpf && reg?.cpf && (
                         <ReleaseCpfButton cpf={reg.cpf} dict={dict} />
                       )}
-                      <RevokeButton mac={g.mac} dict={dict} />
+                      <RevokeButton mac={g.mac} site={siteFilter ?? null} dict={dict} />
                     </TableCell>
                   </TableRow>
                 );

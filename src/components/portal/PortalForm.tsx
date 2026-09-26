@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/card";
 import {
   getGuestRegistrationSchema,
+  type GuestRegistrationFormValues,
   type GuestRegistrationInput,
 } from "@/lib/validators";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
@@ -69,7 +70,7 @@ export function PortalForm({ settings, dict }: { settings: SystemSettings; dict:
     setValue,
     watch,
     formState: { errors, isSubmitting },
-  } = useForm<GuestRegistrationInput>({
+  } = useForm<GuestRegistrationFormValues, unknown, GuestRegistrationInput>({
     resolver: zodResolver(getGuestRegistrationSchema(dict.validation, { requireToken })),
     defaultValues: {
       fullName: "",

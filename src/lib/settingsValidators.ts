@@ -3,9 +3,10 @@ import { z } from "zod";
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
 
 /**
- * Aceita string vazia (remove), caminho relativo `/uploads/...` (upload local)
- * ou URL absoluta http(s). Rejeita `javascript:`, `data:`, `vbscript:` e qualquer
- * outro scheme — defesa contra XSS via `<img src>` injetado pelo admin.
+ * Aceita string vazia (remove), caminho de upload local (`/api/uploads/<arquivo>`,
+ * retornado por /api/admin/upload, ou o legado `/uploads/...`) ou URL absoluta http(s).
+ * Rejeita `javascript:`, `data:`, `vbscript:` e qualquer outro scheme — defesa
+ * contra XSS via `<img src>` injetado pelo admin.
  */
 const imageUrlSchema = z
   .string()
@@ -13,14 +14,14 @@ const imageUrlSchema = z
   .transform((v) => v.trim())
   .refine((v) => {
     if (v === "") return true;
-    if (v.startsWith("/uploads/")) return true;
+    if (/^\/(api\/)?uploads\/[A-Za-z0-9][A-Za-z0-9._-]*$/.test(v)) return true;
     try {
       const u = new URL(v);
       return u.protocol === "http:" || u.protocol === "https:";
     } catch {
       return false;
     }
-  }, { message: "URL deve ser http(s) ou /uploads/..." });
+  }, { message: "URL deve ser http(s) ou /api/uploads/..." });
 
 const optionalImageUrl = z
   .preprocess((v) => (v === null || v === undefined ? "" : v), imageUrlSchema);

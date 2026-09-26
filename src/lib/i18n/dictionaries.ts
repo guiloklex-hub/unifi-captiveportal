@@ -12,6 +12,10 @@ export function getLocale(acceptLanguage: string | null): Locale {
 export const dictionaries = {
   pt: {
     portal: {
+      errRateLimited: "Muitas tentativas. Aguarde alguns segundos e tente novamente.",
+      errServiceUnavailable: "Serviço temporariamente indisponível. Tente novamente em alguns instantes.",
+      errAuthorizeFailed: "Não foi possível liberar o acesso. Tente novamente ou procure a recepção.",
+      errInvalidData: "Dados inválidos. Revise o formulário.",
       unavailableAccess: "Acesso indisponível",
       unavailableDesc: "Esta página deve ser aberta automaticamente ao conectar na rede Wi-Fi Guest.",
       fillDataDesc: "Preencha seus dados para acessar o Wi-Fi gratuito.",
@@ -274,6 +278,10 @@ export const dictionaries = {
   },
   en: {
     portal: {
+      errRateLimited: "Too many attempts. Please wait a few seconds and try again.",
+      errServiceUnavailable: "Service temporarily unavailable. Please try again shortly.",
+      errAuthorizeFailed: "We couldn't grant access. Please try again or ask the front desk.",
+      errInvalidData: "Invalid data. Please review the form.",
       unavailableAccess: "Access unavailable",
       unavailableDesc: "This page should open automatically when connecting to the Guest Wi-Fi network.",
       fillDataDesc: "Fill in your details to access free Wi-Fi.",
@@ -536,6 +544,10 @@ export const dictionaries = {
   },
   es: {
     portal: {
+      errRateLimited: "Demasiados intentos. Espera unos segundos e inténtalo de nuevo.",
+      errServiceUnavailable: "Servicio temporalmente no disponible. Inténtalo de nuevo en unos instantes.",
+      errAuthorizeFailed: "No fue posible liberar el acceso. Inténtalo de nuevo o consulta en recepción.",
+      errInvalidData: "Datos inválidos. Revisa el formulario.",
       unavailableAccess: "Acceso no disponible",
       unavailableDesc: "Esta página debe abrirse automáticamente al conectarse a la red Wi-Fi de invitados.",
       fillDataDesc: "Rellena tus datos para acceder al Wi-Fi gratis.",

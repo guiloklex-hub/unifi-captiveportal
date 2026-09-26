@@ -83,9 +83,17 @@ function defaultSite(): string {
   return process.env.UNIFI_SITE || "default";
 }
 
+const SITE_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
+
+/**
+ * Nome curto do site (vai direto para o path `/api/s/<site>/...`). Valores fora
+ * da allowlist são recusados — evita path injection na API da controladora.
+ */
 function resolveSite(site?: string | null): string {
   const s = (site ?? "").trim();
-  return s.length > 0 ? s : defaultSite();
+  if (s.length === 0) return defaultSite();
+  if (!SITE_NAME_RE.test(s)) throw new UniFiClientError(400, `Site UniFi inválido: ${s.slice(0, 64)}`);
+  return s;
 }
 
 function parseSetCookie(header: string | null): string {
@@ -407,6 +415,7 @@ export type UniFiGuest = {
   tx_bytes?: number;
   rx_bytes?: number;
   authorized?: boolean;
+  expired?: boolean;
 };
 
 export async function listActiveGuests(siteOverride?: string | null): Promise<UniFiGuest[]> {

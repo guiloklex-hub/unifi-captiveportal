@@ -26,22 +26,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "CPF inválido" }, { status: 400 });
   }
 
-  const macs = await revokeActiveCpfSessions(cpf);
+  const devices = await revokeActiveCpfSessions(cpf);
 
-  if (macs.length === 0) {
+  if (devices.length === 0) {
     return NextResponse.json({ ok: true, released: 0, macs: [] });
   }
 
-  const log = logger.child({ cpf, released: macs.length });
+  const log = logger.child({ cpf, released: devices.length });
 
   await Promise.all(
-    macs.map((mac) =>
-      unauthorizeGuest(mac).catch((err) =>
-        log.warn({ mac, err: (err as Error).message }, "unauthorize failed on UniFi"),
+    devices.map(({ mac, site }) =>
+      unauthorizeGuest(mac, site).catch((err) =>
+        log.warn({ mac, site, err: (err as Error).message }, "unauthorize failed on UniFi"),
       ),
     ),
   );
 
+  const macs = [...new Set(devices.map((d) => d.mac))];
   log.info("CPF released by admin");
   return NextResponse.json({ ok: true, released: macs.length, macs });
 }
