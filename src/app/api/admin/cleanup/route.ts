@@ -31,8 +31,15 @@ export async function POST() {
     where: { authorizedAt: { lt: cutoff } },
   });
 
+  // Códigos de verificação e logins sociais: dados transitórios (24 h bastam).
+  const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [otp, oauth] = await Promise.all([
+    prisma.otpChallenge.deleteMany({ where: { createdAt: { lt: dayAgo } } }),
+    prisma.oAuthLogin.deleteMany({ where: { createdAt: { lt: dayAgo } } }),
+  ]);
+
   logger.info(
-    { retention, cutoff: cutoff.toISOString(), deleted: result.count },
+    { retention, cutoff: cutoff.toISOString(), deleted: result.count, otp: otp.count, oauth: oauth.count },
     "cleanup: GuestRegistration purge",
   );
 
@@ -41,5 +48,7 @@ export async function POST() {
     retentionDays: retention,
     cutoff: cutoff.toISOString(),
     deleted: result.count,
+    deletedOtpChallenges: otp.count,
+    deletedOAuthLogins: oauth.count,
   });
 }

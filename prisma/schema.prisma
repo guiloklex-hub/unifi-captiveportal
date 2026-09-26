@@ -105,6 +105,14 @@ model SystemSettings {
   /// Reconhece dispositivos que já se cadastraram nos últimos N dias (0 = desligado).
   rememberDeviceDays   Int     @default(0)
 
+  /// Verificação por código: none | email | sms.
+  verificationMode   String  @default("none")
+  /// Só para e-mail: minutos de acesso provisório para o guest ler o código.
+  otpPreAuthMinutes  Int     @default(10)
+  /// Login social (credenciais OAuth no .env).
+  socialGoogle       Boolean @default(false)
+  socialMicrosoft    Boolean @default(false)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -132,4 +140,46 @@ model UniFiConnection {
   apiKeyEnc   String?
   insecureTls Boolean  @default(false)
   updatedAt   DateTime @updatedAt
+}
+
+/// Código de verificação (OTP) enviado por e-mail ou SMS.
+model OtpChallenge {
+  id          String    @id @default(cuid())
+  mac         String
+  /// email | sms
+  channel     String
+  destination String
+  /// HMAC-SHA256 do código (o código em si nunca é gravado).
+  codeHash    String
+  /// Dados do formulário (JSON) para concluir a autorização após a verificação.
+  payload     String
+  attempts    Int       @default(0)
+  /// Recebeu acesso provisório na UniFi para ler o e-mail.
+  preAuth     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  expiresAt   DateTime
+  verifiedAt  DateTime?
+
+  @@index([mac, createdAt])
+}
+
+/// Login social (OAuth/OIDC) em andamento ou concluído.
+model OAuthLogin {
+  /// `state` do OAuth.
+  id           String    @id
+  provider     String
+  codeVerifier String
+  nonce        String
+  /// Contexto UniFi (mac, ap, ssid, site, url) em JSON.
+  context      String
+  createdAt    DateTime  @default(now())
+  expiresAt    DateTime
+  /// Preenchidos após o callback do provedor.
+  name         String?
+  email        String?
+  /// Ticket de uso único devolvido ao portal após o callback.
+  ticket       String?   @unique
+  usedAt       DateTime?
+
+  @@index([expiresAt])
 }

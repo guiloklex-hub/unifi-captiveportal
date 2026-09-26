@@ -27,6 +27,18 @@ type GlobalSettings = {
   fieldDocument: FieldMode;
   allowForeignDocument: boolean;
   rememberDeviceDays: string;
+  verificationMode: "none" | "email" | "sms";
+  otpPreAuthMinutes: string;
+  socialGoogle: boolean;
+  socialMicrosoft: boolean;
+};
+
+type Capabilities = {
+  email: boolean;
+  sms: boolean;
+  google: boolean;
+  microsoft: boolean;
+  oauthRedirectUri: string | null;
 };
 
 type BrandingFields = Pick<GlobalSettings, "brandName" | "logoUrl" | "backgroundUrl" | "primaryColor" | "termsOfUse">;
@@ -51,6 +63,7 @@ export default function SettingsPage() {
   // "" = marca global (todos os sites); senão, sobrescritas do site escolhido.
   const [scope, setScope] = useState("");
   const [siteBranding, setSiteBranding] = useState<BrandingFields>(EMPTY_BRANDING);
+  const [caps, setCaps] = useState<Capabilities | null>(null);
 
   useEffect(() => {
     setDict(dictionaries[getLocale(navigator.language)]);
@@ -77,7 +90,12 @@ export default function SettingsPage() {
         fieldDocument: data.fieldDocument ?? "required",
         allowForeignDocument: Boolean(data.allowForeignDocument),
         rememberDeviceDays: str(data.rememberDeviceDays ?? 0),
+        verificationMode: data.verificationMode ?? "none",
+        otpPreAuthMinutes: str(data.otpPreAuthMinutes ?? 10),
+        socialGoogle: Boolean(data.socialGoogle),
+        socialMicrosoft: Boolean(data.socialMicrosoft),
       });
+      setCaps(data.capabilities ?? null);
       setRequireTokenLocked(locks?.requireToken !== undefined && locks?.requireToken !== null);
       setSites(Array.isArray(siteList?.sites) ? siteList.sites : []);
       setLoading(false);
@@ -136,6 +154,7 @@ export default function SettingsPage() {
         defaultUpKbps: numOrNull(settings.defaultUpKbps),
         defaultQuotaMB: numOrNull(settings.defaultQuotaMB),
         rememberDeviceDays: Number(settings.rememberDeviceDays || 0),
+        otpPreAuthMinutes: Number(settings.otpPreAuthMinutes || 0),
       };
       const requests = [
         fetch("/api/admin/settings", {
@@ -321,6 +340,86 @@ export default function SettingsPage() {
                 <span className="block text-xs text-muted-foreground">{t.allowForeignHint}</span>
               </span>
             </label>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>{t.verifyTitle}</CardTitle>
+            <CardDescription>{t.verifyDesc}</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="verificationMode">{t.verifyModeLabel}</Label>
+                <select
+                  id="verificationMode"
+                  className={selectClass}
+                  value={settings.verificationMode}
+                  onChange={(e) => set("verificationMode", e.target.value as GlobalSettings["verificationMode"])}
+                >
+                  <option value="none">{t.verifyNone}</option>
+                  <option value="email">{t.verifyEmail}</option>
+                  <option value="sms">{t.verifySms}</option>
+                </select>
+                {settings.verificationMode === "email" && caps && !caps.email && (
+                  <p className="text-xs text-amber-700">{t.verifyEmailMissing}</p>
+                )}
+                {settings.verificationMode === "sms" && caps && !caps.sms && (
+                  <p className="text-xs text-amber-700">{t.verifySmsMissing}</p>
+                )}
+                {settings.verificationMode !== "none" && (
+                  <p className="text-xs text-muted-foreground">{t.verifyFieldForced}</p>
+                )}
+              </div>
+              {settings.verificationMode === "email" && (
+                <div className="space-y-1.5">
+                  <Label htmlFor="otpPreAuthMinutes">{t.verifyPreAuthLabel}</Label>
+                  <Input
+                    id="otpPreAuthMinutes"
+                    type="number"
+                    min={0}
+                    max={60}
+                    value={settings.otpPreAuthMinutes}
+                    onChange={(e) => set("otpPreAuthMinutes", e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">{t.verifyPreAuthHint}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-3 border-t pt-4">
+              {(
+                [
+                  ["socialGoogle", "Google", caps?.google],
+                  ["socialMicrosoft", "Microsoft", caps?.microsoft],
+                ] as const
+              ).map(([key, label, configured]) => (
+                <label key={key} className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="checkbox"
+                    className="mt-1 h-5 w-5"
+                    checked={settings[key]}
+                    onChange={(e) => set(key, e.target.checked)}
+                  />
+                  <span>
+                    <span className="block text-sm font-medium">{t.socialLabel.replace("{provider}", label)}</span>
+                    {settings[key] && caps && (!configured || !caps.oauthRedirectUri) && (
+                      <span className="block text-xs text-amber-700">{t.socialMissing}</span>
+                    )}
+                  </span>
+                </label>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                {t.socialHint}
+                {caps?.oauthRedirectUri && (
+                  <>
+                    {" "}
+                    <code className="rounded bg-slate-100 px-1">{caps.oauthRedirectUri}</code>
+                  </>
+                )}
+              </p>
+            </div>
           </CardContent>
         </Card>
 

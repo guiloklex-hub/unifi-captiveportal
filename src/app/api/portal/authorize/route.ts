@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { getGuestRegistrationSchema } from "@/lib/validators";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { clientIp } from "@/lib/rateLimit";
 import { getSystemSettings } from "@/lib/settings";
-import { grantGuestAccess } from "@/lib/portal/grantAccess";
+import { grantGuestAccess, type AuthMethod } from "@/lib/portal/grantAccess";
 import { portalRateLimit } from "@/lib/portal/rateLimit";
+import { accessRequestFrom, parseGuestForm } from "@/lib/portal/form";
+import { consumeSocialTicket } from "@/lib/portal/oauth";
 
 export const runtime = "nodejs";
 
@@ -24,36 +24,29 @@ export async function POST(req: NextRequest) {
   const limited = portalRateLimit("authorize", ip, body, dict);
   if (limited) return limited;
 
-  const parsed = getGuestRegistrationSchema(dict.validation, settings).safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: dict.portal.errInvalidData, issues: z.flattenError(parsed.error) },
-      { status: 400 },
-    );
+  const form = parseGuestForm(body, settings, dict);
+  if (!form.ok) return NextResponse.json(form.body, { status: form.status });
+  const data = form.data;
+
+  // Login social: nome/e-mail vêm do provedor (verificados), não do formulário.
+  let authMethod: AuthMethod = "form";
+  const socialTicket = (body as { socialTicket?: unknown })?.socialTicket;
+  if (typeof socialTicket === "string" && socialTicket) {
+    const social = await consumeSocialTicket(socialTicket, data.mac);
+    if (!social) return NextResponse.json({ error: dict.portal.errSocialExpired }, { status: 400 });
+    data.fullName = social.name;
+    data.email = social.email;
+    authMethod = social.provider;
+  } else if (settings.verificationMode !== "none") {
+    // Com verificação ligada, a autorização direta só passa por /otp/verify.
+    return NextResponse.json({ error: dict.portal.errVerificationRequired }, { status: 403 });
   }
-  const data = parsed.data;
 
   const result = await grantGuestAccess(
-    {
-      identity: {
-        fullName: data.fullName,
-        email: data.email,
-        phone: data.phone,
-        cpf: data.cpf,
-        documentType: data.documentType,
-        document: data.document,
-      },
-      mac: data.mac,
-      apMac: data.apMac,
-      ssid: data.ssid,
-      site: data.site,
-      originalUrl: data.originalUrl,
-      fingerprint: data.fingerprint ?? null,
+    accessRequestFrom(data, authMethod, {
       userAgent: req.headers.get("user-agent") ?? undefined,
       ipAddress: ip !== "unknown" ? ip : undefined,
-      token: data.token,
-      authMethod: "form",
-    },
+    }),
     settings,
     dict,
   );

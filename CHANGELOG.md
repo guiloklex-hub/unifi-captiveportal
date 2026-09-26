@@ -6,6 +6,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Verificação por código** (opcional) por **e-mail** (SMTP, com acesso provisório para ler o e-mail) ou **SMS**
+  (Twilio ou webhook genérico). Código de 6 dígitos, uso único, 10 min, 5 tentativas; guardado só como HMAC.
+- **Login social** (opcional) com **Google** e **Microsoft** (OAuth 2.0/OIDC + PKCE): nome e e-mail verificados
+  pelo provedor.
+- Limpeza diária também remove códigos e logins sociais com mais de 24 h.
 - **Formas de acesso opcionais** (Customização), todas desligadas por padrão:
   formulário configurável (obrigatório/opcional/não pedir por campo), **acesso rápido** (só termos),
   **estrangeiros sem CPF** (passaporte + telefone internacional), **convidado recorrente** (reconexão em 1 clique),

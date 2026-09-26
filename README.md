@@ -602,13 +602,29 @@ Tudo fica em **Customização** e vem **desligado/idêntico ao comportamento ant
 
 O dashboard ganhou o gráfico **Formas de acesso** e passa a contar visitantes únicos por uma *chave de visitante* (CPF → documento → e-mail → MAC), que funciona com qualquer configuração de formulário.
 
-### 8.2 Vouchers impressos
+### 8.2 Verificação por código e login social (opcionais)
+
+**Código de verificação** (Customização → Verificação e login social):
+- **Por e-mail** ou **por SMS**: ao enviar o formulário, o convidado recebe um código de 6 dígitos (válido por 10 min, até 5 tentativas, reenvio após 45 s). Só depois de digitar o código o acesso é liberado — a autorização direta passa a ser recusada.
+- **E-mail**: como o convidado ainda não tem internet, o portal libera um **acesso provisório** (padrão 10 min, banda reduzida, no máximo 2 por dispositivo/dia) para ele abrir a caixa de entrada. Configure SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`).
+- **SMS**: `SMS_PROVIDER=twilio` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`) ou `SMS_PROVIDER=webhook` (`SMS_WEBHOOK_URL` recebe `POST {"to":"+55…","message":"…"}`, com `SMS_WEBHOOK_TOKEN` opcional como Bearer) — o webhook permite usar qualquer gateway (Zenvia, Infobip, AWS SNS, WhatsApp via n8n/Make…).
+- O código nunca é gravado (só um HMAC dele) e vale uma única vez.
+
+**Login social** (Google e/ou Microsoft):
+- Nome e e-mail chegam **verificados pelo provedor** (dispensa o código); os demais campos obrigatórios (CPF, celular) continuam sendo pedidos.
+- Requisitos: `PUBLIC_PORTAL_URL` com **HTTPS** (os provedores não aceitam redirect HTTP), credenciais OAuth no `.env` (`GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`; `MICROSOFT_CLIENT_ID`/`MICROSOFT_CLIENT_SECRET`/`MICROSOFT_TENANT`) e o **URI de redirecionamento** `https://<seu-portal>/api/portal/oauth/callback` cadastrado no provedor (o painel mostra o valor exato).
+- Os domínios de login precisam estar no **walled garden** da UniFi (ponto de partida — confirme com o provedor, a lista muda):
+  - Google: `accounts.google.com`, `ssl.gstatic.com`, `www.gstatic.com`, `fonts.gstatic.com`, `apis.google.com`, `accounts.youtube.com`
+  - Microsoft: `login.microsoftonline.com`, `login.live.com`, `login.microsoft.com`, `aadcdn.msftauth.net`, `aadcdn.msauth.net`, `logincdn.msauth.net`
+- Fluxo OAuth 2.0 / OpenID Connect com **PKCE**, `state` e `nonce`; o ticket devolvido ao portal é de uso único e amarrado ao MAC.
+
+### 8.3 Vouchers impressos
 
 Em **Tokens → Novo token**, informe **Quantidade** (até 500) para criar um lote de tokens idênticos e clique em **Imprimir vouchers**: a folha A4 traz 8 cartões por página com QR code, código, tempo de acesso, validade e (opcional) o nome da rede Wi‑Fi. Lotes antigos podem ser reimpressos pelo botão **Imprimir lote** na lista.
 
 > **Por que não os vouchers nativos da UniFi?** Os vouchers do Hotspot da UniFi são validados pelo portal *interno* da controladora. Com portal externo (este projeto) não há API para validar/consumir um voucher UniFi — por isso o portal usa o próprio sistema de tokens, que tem os mesmos recursos (tempo, banda, cota, usos, validade) e ainda gera QR code.
 
-### 8.3 Portal aberto sem MAC (QR code)
+### 8.4 Portal aberto sem MAC (QR code)
 
 Quando o celular abre o link do QR code direto na câmera, a URL não traz o `?id=<MAC>` que a controladora injeta. O portal então procura o MAC na controladora **pelo IP do cliente** e segue normalmente. Requer proxy reverso que informe o IP real (`X-Real-IP` / `X-Forwarded-For`); desative com `PORTAL_MAC_LOOKUP=false`.
 
@@ -716,6 +732,10 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/api/portal/authorize` | POST | Valida token, autoriza UniFi, persiste guest. Rate-limit 10 req/min/IP |
 | `/api/portal/session/[id]` | GET | Detalhes não-PII da sessão (janela 5min) |
 | `/api/portal/reconnect` | POST | Reconexão em 1 clique de dispositivo reconhecido |
+| `/api/portal/otp/start` | POST | Valida o formulário e envia o código (e-mail/SMS) |
+| `/api/portal/otp/verify` | POST | Confere o código e libera o acesso |
+| `/api/portal/oauth/{google\|microsoft}/start` | GET | Inicia o login social |
+| `/api/portal/oauth/callback` | GET | Retorno do provedor (redirect URI) |
 
 ### Administrativos
 

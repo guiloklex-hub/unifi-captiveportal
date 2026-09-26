@@ -8,6 +8,7 @@ import { PortalForm } from "@/components/portal/PortalForm";
 import { getSystemSettings, resolveBranding } from "@/lib/settings";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { findReturningGuest } from "@/lib/portal/returning";
+import { availableProviders, peekSocialTicket } from "@/lib/portal/oauth";
 import { contrastForeground } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -66,8 +67,16 @@ export default async function PortalPage({
   const locale = getLocale(headersList.get("accept-language"));
   const dict = dictionaries[locale];
 
+  const socialTicket = param("social");
+  const social =
+    socialTicket && MAC_RE.test(mac)
+      ? await peekSocialTicket(socialTicket, mac)
+          .then((s) => (s ? { ...s, ticket: socialTicket } : null))
+          .catch(() => null)
+      : null;
+
   const returning =
-    !preview && MAC_RE.test(mac)
+    !preview && !social && MAC_RE.test(mac)
       ? await findReturningGuest(mac, settings)
           .then((r) => (r ? { firstName: r.firstName } : null))
           .catch(() => null)
@@ -103,6 +112,10 @@ export default async function PortalPage({
             returning={returning}
             preview={preview}
             suggestForeign={locale !== "pt"}
+            verificationMode={settings.verificationMode}
+            socialProviders={availableProviders(settings)}
+            social={social}
+            socialError={Boolean(param("socialError"))}
           />
         </Suspense>
       </div>

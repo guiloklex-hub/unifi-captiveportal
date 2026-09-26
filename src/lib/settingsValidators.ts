@@ -58,6 +58,11 @@ export const settingsSchema = z.object({
   fieldDocument: fieldMode,
   allowForeignDocument: z.boolean().optional(),
   rememberDeviceDays: z.coerce.number().int().min(0).max(365).optional(),
+  // Verificação por código e login social
+  verificationMode: z.enum(["none", "email", "sms"]).optional(),
+  otpPreAuthMinutes: z.coerce.number().int().min(0).max(60).optional(),
+  socialGoogle: z.boolean().optional(),
+  socialMicrosoft: z.boolean().optional(),
 });
 
 /** Sobrescritas de marca de um site. Campo vazio/nulo = herda da marca global. */
