@@ -23,9 +23,15 @@ export interface SystemSettings {
   fieldDocument: FieldMode;
   allowForeignDocument: boolean;
   rememberDeviceDays: number;
+  verificationMode: VerificationMode;
+  otpPreAuthMinutes: number;
+  socialGoogle: boolean;
+  socialMicrosoft: boolean;
 }
 
-const DEFAULT_SETTINGS: SystemSettings = {
+export type VerificationMode = "none" | "email" | "sms";
+
+export const DEFAULT_SETTINGS: SystemSettings = {
   brandName: "UniFi Portal",
   logoUrl: null,
   backgroundUrl: null,
@@ -43,6 +49,10 @@ const DEFAULT_SETTINGS: SystemSettings = {
   fieldDocument: "required",
   allowForeignDocument: false,
   rememberDeviceDays: 0,
+  verificationMode: "none",
+  otpPreAuthMinutes: 10,
+  socialGoogle: false,
+  socialMicrosoft: false,
 };
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -78,6 +88,10 @@ function toSettings(row: Partial<SystemSettings> | null): SystemSettings {
   merged.fieldEmail = fieldMode(merged.fieldEmail);
   merged.fieldPhone = fieldMode(merged.fieldPhone);
   merged.fieldDocument = fieldMode(merged.fieldDocument);
+  if (!["none", "email", "sms"].includes(merged.verificationMode)) merged.verificationMode = "none";
+  // O campo verificado é sempre obrigatório.
+  if (merged.verificationMode === "email") merged.fieldEmail = "required";
+  if (merged.verificationMode === "sms") merged.fieldPhone = "required";
   // Lock de `.env` tem precedência sobre o valor salvo no banco — sem isso o
   // portal ignorava TOKEN_LOCK_REQUIRE até o admin salvar a tela de settings.
   const locks = getTokenLocks();

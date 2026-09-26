@@ -20,13 +20,14 @@ vi.mock("@/lib/unifi", async () => {
 });
 
 const { grantGuestAccess } = await import("@/lib/portal/grantAccess");
-const { defaultGuestPolicy } = await import("@/lib/settings");
+const { defaultGuestPolicy, DEFAULT_SETTINGS } = await import("@/lib/settings");
 const { findReturningGuest } = await import("@/lib/portal/returning");
 const { dictionaries } = await import("@/lib/i18n/dictionaries");
 const { UniFiUnavailableError, UniFiClientError } = await import("@/lib/unifi/errors");
 
 const dict = dictionaries.pt;
 const baseSettings = {
+  ...DEFAULT_SETTINGS,
   brandName: "X",
   logoUrl: null,
   backgroundUrl: null,

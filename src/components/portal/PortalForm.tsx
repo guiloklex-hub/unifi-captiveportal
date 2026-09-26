@@ -20,7 +20,13 @@ import {
 } from "@/lib/validators";
 import { maskCPF, maskPhoneBR } from "@/lib/masks";
 import type { Dictionary } from "@/lib/i18n/dictionaries";
-import type { Branding, FieldMode } from "@/lib/settings";
+import type { Branding, FieldMode, VerificationMode } from "@/lib/settings";
+
+type Provider = "google" | "microsoft";
+const PROVIDER_LABEL: Record<Provider, string> = { google: "Google", microsoft: "Microsoft" };
+
+type OtpState = { challengeId: string; channel: "email" | "sms"; destination: string; preAuthMinutes: number };
+const RESEND_SECONDS = 45;
 
 function formatTokenCode(raw: string): string {
   const cleaned = (raw ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 12);
@@ -39,14 +45,41 @@ export type PortalFormProps = {
   preview: boolean;
   /** Idioma do navegador não é português → sugere o fluxo de estrangeiro. */
   suggestForeign: boolean;
+  verificationMode: VerificationMode;
+  socialProviders: Provider[];
+  /** Identidade retornada pelo login social (ticket de uso único). */
+  social: { provider: Provider; name: string; email: string; ticket: string } | null;
+  socialError: boolean;
 };
 
-export function PortalForm({ branding, config, dict, returning, preview, suggestForeign }: PortalFormProps) {
+export function PortalForm({
+  branding,
+  config,
+  dict,
+  returning,
+  preview,
+  suggestForeign,
+  verificationMode,
+  socialProviders,
+  social,
+  socialError,
+}: PortalFormProps) {
   const router = useRouter();
   const params = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [showReturning, setShowReturning] = useState(Boolean(returning));
   const [reconnecting, setReconnecting] = useState(false);
+  const [otp, setOtp] = useState<OtpState | null>(null);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpBusy, setOtpBusy] = useState(false);
+  const [resendIn, setResendIn] = useState(0);
+  const lastValues = useRef<GuestRegistrationInput | null>(null);
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const t = setTimeout(() => setResendIn((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [resendIn]);
 
   // Parâmetros injetados pela controladora UniFi
   const unifiCtx = useMemo(
@@ -80,8 +113,8 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
   } = useForm<GuestRegistrationFormValues, unknown, GuestRegistrationInput>({
     resolver: zodResolver(getGuestRegistrationSchema(dict.validation, config)),
     defaultValues: {
-      fullName: "",
-      email: "",
+      fullName: social?.name ?? "",
+      email: social?.email ?? "",
       phone: "",
       cpf: "",
       document: "",
@@ -103,14 +136,70 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
     router.push(`/portal/success?${target ? `url=${encodeURIComponent(target)}` : ""}${id}`);
   };
 
+  const postJson = (url: string, payload: unknown) =>
+    fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+
+  const startOtp = async (values: GuestRegistrationInput) => {
+    lastValues.current = values;
+    const res = await postJson("/api/portal/otp/start", { ...values, fingerprint: fingerprintRef.current });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      if (typeof data?.retryAfter === "number") setResendIn(data.retryAfter);
+      setServerError(data?.error ?? dict.portal.networkError);
+      return;
+    }
+    setOtp(data as OtpState);
+    setOtpCode("");
+    setResendIn(RESEND_SECONDS);
+  };
+
+  const verifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otp || preview) return;
+    setServerError(null);
+    setOtpBusy(true);
+    try {
+      const res = await postJson("/api/portal/otp/verify", { challengeId: otp.challengeId, code: otpCode, mac: unifiCtx.mac });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setServerError(data?.error ?? dict.portal.networkError);
+        return;
+      }
+      goToSuccess(data);
+    } catch {
+      setServerError(dict.portal.networkError);
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const resendOtp = async () => {
+    if (!lastValues.current || resendIn > 0) return;
+    setServerError(null);
+    setOtpBusy(true);
+    try {
+      await startOtp(lastValues.current);
+    } catch {
+      setServerError(dict.portal.networkError);
+    } finally {
+      setOtpBusy(false);
+    }
+  };
+
+  const needsOtp = verificationMode !== "none" && !social;
+
   const onSubmit = async (values: GuestRegistrationInput) => {
     if (preview) return;
     setServerError(null);
     try {
-      const res = await fetch("/api/portal/authorize", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ...values, fingerprint: fingerprintRef.current }),
+      if (needsOtp) {
+        await startOtp(values);
+        return;
+      }
+      const res = await postJson("/api/portal/authorize", {
+        ...values,
+        fingerprint: fingerprintRef.current,
+        socialTicket: social?.ticket,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -186,7 +275,7 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
         </div>
       )}
       <CardTitle className="text-2xl">{branding.brandName}</CardTitle>
-      {!showReturning && (
+      {!showReturning && !otp && (
         <CardDescription>{quickAccess ? dict.portal.quickAccessDesc : dict.portal.fillDataDesc}</CardDescription>
       )}
     </CardHeader>
@@ -241,11 +330,110 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
     );
   }
 
+  if (otp) {
+    return (
+      <Card className="w-full max-w-md shadow-xl">
+        {header}
+        <CardContent>
+          <form className="space-y-4" onSubmit={verifyOtp} noValidate>
+            <div className="space-y-1 text-center">
+              <p className="text-lg font-semibold">{dict.portal.otpTitle}</p>
+              <p className="text-sm text-muted-foreground">
+                {(otp.channel === "email" ? dict.portal.otpSentEmail : dict.portal.otpSentSms).replace(
+                  "{dest}",
+                  otp.destination,
+                )}
+              </p>
+              {otp.preAuthMinutes > 0 && (
+                <p className="text-xs text-emerald-700">
+                  {dict.portal.otpPreAuth.replace("{min}", String(otp.preAuthMinutes))}
+                </p>
+              )}
+            </div>
+            <Field id="otpCode" label={dict.portal.otpCodeLabel}>
+              <Input
+                id="otpCode"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                className="text-center font-mono text-2xl tracking-[0.5em]"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D+/g, "").slice(0, 6))}
+                autoFocus
+              />
+            </Field>
+            {errorBox}
+            <Button type="submit" className="h-12 w-full text-base" disabled={otpBusy || otpCode.length !== 6}>
+              {otpBusy ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : null}
+              {dict.portal.otpVerifyBtn}
+            </Button>
+            <div className="flex items-center justify-between text-sm">
+              <button
+                type="button"
+                className="text-muted-foreground underline underline-offset-4"
+                onClick={() => {
+                  setOtp(null);
+                  setServerError(null);
+                }}
+              >
+                {dict.portal.otpEditBtn}
+              </button>
+              <button
+                type="button"
+                className="text-muted-foreground underline underline-offset-4 disabled:no-underline disabled:opacity-60"
+                disabled={resendIn > 0 || otpBusy}
+                onClick={resendOtp}
+              >
+                {resendIn > 0 ? dict.portal.otpResendIn.replace("{s}", String(resendIn)) : dict.portal.otpResendBtn}
+              </button>
+            </div>
+          </form>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const socialQuery = new URLSearchParams(
+    Object.entries({
+      id: unifiCtx.mac,
+      ap: unifiCtx.apMac ?? "",
+      ssid: unifiCtx.ssid ?? "",
+      site: unifiCtx.site ?? "",
+      url: unifiCtx.originalUrl ?? "",
+    }).filter(([, v]) => v),
+  ).toString();
+
   return (
     <Card className="w-full max-w-md shadow-xl">
       {header}
       <CardContent>
         {previewBanner}
+        {socialError && !social && (
+          <div role="alert" className="mb-4 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">
+            {dict.portal.socialError}
+          </div>
+        )}
+        {social ? (
+          <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+            {dict.portal.socialSignedAs
+              .replace("{provider}", PROVIDER_LABEL[social.provider])
+              .replace("{name}", social.name)
+              .replace("{email}", social.email)}
+          </div>
+        ) : (
+          socialProviders.length > 0 && (
+            <div className="mb-4 space-y-2">
+              {socialProviders.map((p) => (
+                <Button key={p} asChild variant="outline" className="h-12 w-full text-base">
+                  <a href={preview ? "#" : `/api/portal/oauth/${p}/start?${socialQuery}`}>
+                    {dict.portal.socialContinue.replace("{provider}", PROVIDER_LABEL[p])}
+                  </a>
+                </Button>
+              ))}
+              <p className="pt-1 text-center text-xs text-muted-foreground">{dict.portal.socialOr}</p>
+            </div>
+          )
+        )}
         <form className="space-y-4" onSubmit={handleSubmit(onSubmit)} noValidate>
           <input type="hidden" {...register("mac")} />
           <input type="hidden" {...register("apMac")} />
@@ -253,13 +441,13 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
           <input type="hidden" {...register("site")} />
           <input type="hidden" {...register("originalUrl")} />
 
-          {config.fieldName !== "hidden" && (
+          {config.fieldName !== "hidden" && !social && (
             <Field id="fullName" label={label(dict.portal.fullNameLabel, config.fieldName)} error={errors.fullName?.message}>
               <Input id="fullName" placeholder={dict.portal.fullNamePlaceholder} autoComplete="name" {...register("fullName")} />
             </Field>
           )}
 
-          {config.fieldEmail !== "hidden" && (
+          {config.fieldEmail !== "hidden" && !social && (
             <Field id="email" label={label(dict.portal.emailLabel, config.fieldEmail)} error={errors.email?.message}>
               <Input
                 id="email"
@@ -366,6 +554,8 @@ export function PortalForm({ branding, config, dict, returning, preview, suggest
                 <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                 {dict.portal.connecting}
               </>
+            ) : needsOtp ? (
+              dict.portal.sendCodeBtn
             ) : (
               dict.portal.connectBtn
             )}
