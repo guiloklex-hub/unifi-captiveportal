@@ -242,6 +242,8 @@ async function loadDashboard(locale: Locale, siteFilter?: string) {
     "otp-sms": dict.admin.methodOtpSms,
     google: "Google",
     microsoft: "Microsoft",
+    allowlist: dict.admin.methodAllowlist,
+    admin: dict.admin.methodAdmin,
   };
   const methodMap = new Map<string, number>();
   for (const r of recent) {

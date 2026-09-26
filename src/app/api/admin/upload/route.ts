@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { mkdir, writeFile } from "fs/promises";
 import { join } from "path";
 import { logger } from "@/lib/logger";
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     const fileName = generateUploadName(kind);
     await writeFile(join(dir, fileName), buffer);
     logger.info({ fileName, bytes: buffer.length, mime: kind.mime }, "branding upload saved");
+    await audit(req, "upload", fileName, { bytes: buffer.length, mime: kind.mime });
     return NextResponse.json({ success: true, url: publicUploadUrl(fileName) });
   } catch (err) {
     logger.error({ err: (err as Error).message }, "branding upload failed");

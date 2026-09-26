@@ -183,3 +183,62 @@ model OAuthLogin {
 
   @@index([expiresAt])
 }
+
+/// Usuário do painel administrativo. Enquanto não existir nenhum, vale o
+/// login legado por ADMIN_PASSWORD (bootstrap).
+model AdminUser {
+  id             String    @id @default(cuid())
+  username       String    @unique
+  name           String?
+  /// scrypt$N$r$p$salt$hash
+  passwordHash   String
+  /// admin | operator | viewer
+  role           String    @default("admin")
+  /// Segredo TOTP (base32) cifrado com AES-GCM.
+  totpSecretEnc  String?
+  totpEnabled    Boolean   @default(false)
+  disabled       Boolean   @default(false)
+  failedLogins   Int       @default(0)
+  lockedUntil    DateTime?
+  lastLoginAt    DateTime?
+  /// Incrementado para invalidar sessões abertas (troca de senha, desativação).
+  sessionVersion Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+/// Trilha de auditoria das ações administrativas.
+model AuditLog {
+  id      Int      @id @default(autoincrement())
+  at      DateTime @default(now())
+  /// Usuário do painel, "legacy-admin" (ADMIN_PASSWORD) ou "cron".
+  actor   String
+  action  String
+  target  String?
+  /// JSON com detalhes (sem segredos).
+  details String?
+  ip      String?
+
+  @@index([at])
+  @@index([actor, at])
+  @@index([action, at])
+}
+
+/// Bloqueios e liberações de acesso de guests.
+model AccessRule {
+  id          String    @id @default(cuid())
+  /// block | allow
+  kind        String
+  /// mac | cpf | email | document
+  matchType   String
+  value       String
+  reason      String?
+  /// Só para allow: duração da liberação em minutos (nulo = perfil padrão).
+  durationMin Int?
+  expiresAt   DateTime?
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+
+  @@unique([kind, matchType, value])
+  @@index([matchType, value])
+}

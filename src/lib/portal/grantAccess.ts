@@ -5,6 +5,7 @@ import { findActiveCpfOnOtherDevice } from "../cpfLock";
 import { sanitizeGuestRedirect } from "../safeRedirect";
 import { defaultGuestPolicy, type SystemSettings } from "../settings";
 import { visitorKeyOf } from "../validators";
+import { findBlockingRule } from "./accessRules";
 import type { Dictionary } from "../i18n/dictionaries";
 import {
   releaseTokenUse,
@@ -26,7 +27,16 @@ import {
  * Se a UniFi falhar depois de reservar um uso de token, o uso é devolvido.
  */
 
-export type AuthMethod = "form" | "token" | "returning" | "otp-email" | "otp-sms" | "google" | "microsoft";
+export type AuthMethod =
+  | "form"
+  | "token"
+  | "returning"
+  | "otp-email"
+  | "otp-sms"
+  | "google"
+  | "microsoft"
+  | "allowlist"
+  | "admin";
 
 export type GuestIdentity = {
   fullName: string;
@@ -49,6 +59,11 @@ export type AccessRequest = {
   ipAddress?: string;
   token?: string | null;
   authMethod: AuthMethod;
+  /**
+   * Liberação decidida pelo admin (lista de liberação / "liberar dispositivo"):
+   * ignora token e bloqueio de CPF e usa a duração informada.
+   */
+  adminGrant?: { minutes?: number | null };
 };
 
 export type AccessResult =
@@ -83,10 +98,23 @@ export async function grantGuestAccess(
   let site = req.site;
   let authMethod: AuthMethod = req.authMethod;
 
+  // ── Bloqueios definidos pelo admin ───────────────────────────────────────
+  const block = await findBlockingRule({
+    mac,
+    cpf: req.identity.cpf,
+    email: req.identity.email,
+    document: req.identity.document,
+  });
+  if (block) {
+    log.info({ ruleId: block.id, matchType: block.matchType }, "Guest blocked by access rule");
+    return { ok: false, status: 403, error: dict.portal.errBlocked };
+  }
+  if (req.adminGrant?.minutes) minutes = req.adminGrant.minutes;
+
   // ── Token ────────────────────────────────────────────────────────────────
   let tokenId: string | null = null;
   let tokenReserved = false;
-  if (settings.requireToken) {
+  if (settings.requireToken && !req.adminGrant) {
     try {
       const token = await validateTokenForUse(req.token ?? "");
       tokenId = token.id;
@@ -147,7 +175,7 @@ export async function grantGuestAccess(
 
   // ── 1 dispositivo por CPF ────────────────────────────────────────────────
   // Só com CPF informado e sem token (o admin já controla o acesso pelo token).
-  if (settings.singleDeviceByCpf && !tokenReserved && req.identity.cpf) {
+  if (settings.singleDeviceByCpf && !tokenReserved && !req.adminGrant && req.identity.cpf) {
     const conflict = await findActiveCpfOnOtherDevice(req.identity.cpf, mac);
     if (conflict) {
       log.info({ conflictMac: conflict.macAddress, conflictId: conflict.id }, "CPF blocked: active session on other MAC");

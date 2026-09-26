@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { isValidCPF, onlyDigits } from "@/lib/validators";
 import { revokeActiveCpfSessions } from "@/lib/cpfLock";
 import { unauthorizeGuest } from "@/lib/unifi";
@@ -44,5 +45,6 @@ export async function POST(req: NextRequest) {
 
   const macs = [...new Set(devices.map((d) => d.mac))];
   log.info("CPF released by admin");
+  await audit(req, "guest.release_cpf", `${cpf.slice(0, 3)}.***.***-${cpf.slice(-2)}`, { macs });
   return NextResponse.json({ ok: true, released: macs.length, macs });
 }

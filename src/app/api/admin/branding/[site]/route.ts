@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { audit } from "@/lib/admin/audit";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { invalidateSystemSettingsCache } from "@/lib/settings";
@@ -41,13 +42,15 @@ export async function PUT(req: NextRequest, { params }: Params) {
     await prisma.siteBranding.upsert({ where: { site }, create: { site, ...data }, update: data });
   }
   invalidateSystemSettingsCache();
+  await audit(req, "branding.update", site, { cleared: empty });
   return NextResponse.json({ site, ...data });
 }
 
-export async function DELETE(_req: NextRequest, { params }: Params) {
+export async function DELETE(req: NextRequest, { params }: Params) {
   const site = await siteFrom(params);
   if (!site) return NextResponse.json({ error: "Site inválido" }, { status: 400 });
   await prisma.siteBranding.deleteMany({ where: { site } });
   invalidateSystemSettingsCache();
+  await audit(req, "branding.reset", site);
   return NextResponse.json({ ok: true });
 }

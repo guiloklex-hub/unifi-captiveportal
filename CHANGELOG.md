@@ -6,6 +6,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Usuários do painel com papéis** (Administrador, Operador, Somente leitura), senhas com scrypt, bloqueio após
+  5 tentativas e **2FA TOTP** por usuário. RBAC aplicado no `proxy.ts` a páginas e APIs.
+- **Trilha de auditoria** de todas as ações administrativas, com filtro e exportação CSV.
+- **Bloqueios e liberações**: bloquear por MAC/CPF/e-mail/documento; liberar dispositivo (1 clique, sem cadastro);
+  **liberar agora** aparelhos sem navegador (TV, impressora); **estender** e **bloquear** direto na tela de Sessões.
 - **Verificação por código** (opcional) por **e-mail** (SMTP, com acesso provisório para ler o e-mail) ou **SMS**
   (Twilio ou webhook genérico). Código de 6 dígitos, uso único, 10 min, 5 tentativas; guardado só como HMAC.
 - **Login social** (opcional) com **Google** e **Microsoft** (OAuth 2.0/OIDC + PKCE): nome e e-mail verificados
@@ -34,6 +39,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Configuração do Dependabot para npm e GitHub Actions.
 
 ### Alterado
+- **Login do painel**: `ADMIN_PASSWORD` vira senha de primeiro acesso (bootstrap); após criar o primeiro usuário,
+  o login passa a ser por usuário e senha. `ADMIN_BREAK_GLASS=true` reabre o acesso de emergência.
+  Sessões abertas antes da atualização precisam entrar de novo (novo formato de token).
+- Logout apenas por `POST` (um `GET` permitia deslogar o admin via CSRF).
 - Fluxo de liberação unificado em `src/lib/portal/grantAccess.ts` (formulário, recorrente e, na sequência, OTP/login social).
 - Cliente UniFi reorganizado em `src/lib/unifi/` (config, transporte, API legada, API oficial, fachada).
   Sessão, circuit breaker e caches agora são únicos por processo (antes cada rota do Next tinha os seus).
