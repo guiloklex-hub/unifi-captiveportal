@@ -6,6 +6,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Integrações** (menu Integrações): webhooks assinados (HMAC-SHA256, retentativas, teste pelo painel) para
+  `guest.authorized`, `guest.revoked` e `rule.created`; **API pública v1** com chaves e escopos (métricas, sessões,
+  cadastros, criação de vouchers e liberação de dispositivos); **relatório por e-mail** diário/semanal.
+  Guia em `docs/integracoes.md`.
 - **LGPD** (menu Privacidade): versão dos termos aceita por cadastro (hash + texto arquivado), consentimento de
   marketing separado e opcional, exportação (JSON) e anonimização de dados por titular, retenção de dados pessoais
   (`PII_RETENTION_DAYS`) separada do registro de conexão, mascaramento de PII para o papel "Somente leitura".

@@ -6,6 +6,7 @@ import { sanitizeGuestRedirect } from "../safeRedirect";
 import { defaultGuestPolicy, type SystemSettings } from "../settings";
 import { visitorKeyOf } from "../validators";
 import { findBlockingRule } from "./accessRules";
+import { emitEvent } from "../integrations/webhooks";
 import type { Dictionary } from "../i18n/dictionaries";
 import {
   releaseTokenUse,
@@ -234,17 +235,50 @@ export async function grantGuestAccess(
     bytesQuotaMB,
     tokenId,
   };
+  let record: { id: number; authorizedAt: Date };
   try {
-    const record = await prisma.guestRegistration.upsert({
+    record = await prisma.guestRegistration.upsert({
       where: { macAddress_authDate: { macAddress: mac, authDate } },
       create: { ...data, macAddress: mac, authDate },
       update: { ...data, authorizedAt: new Date(), revokedAt: null },
+      select: { id: true, authorizedAt: true },
     });
-    log.info({ id: record.id, tokenId }, "Guest authorized");
-    return { ok: true, id: record.id, redirect };
   } catch (err) {
     // Autorizou na UniFi mas falhou no banco: não bloqueia o guest; fica no log.
     log.error({ err: (err as Error).message }, "DB persist failed after UniFi authorize");
     return { ok: true, id: null, redirect };
   }
+
+  log.info({ id: record.id, tokenId }, "Guest authorized");
+  try {
+    emitEvent("guest.authorized", {
+      data: {
+        registrationId: record.id,
+        authorizedAt: new Date(record.authorizedAt ?? Date.now()).toISOString(),
+        mac,
+        ip: req.ipAddress ?? null,
+        site,
+        ssid: req.ssid,
+        apMac: req.apMac,
+        authMethod,
+        durationMin: minutes,
+        downKbps: downKbps ?? null,
+        upKbps: upKbps ?? null,
+        bytesQuotaMB: bytesQuotaMB ?? null,
+        tokenId,
+        marketingConsent: data.marketingConsent,
+      },
+      pii: {
+        fullName: id.fullName,
+        email: id.email,
+        phone: id.phone,
+        cpf: id.cpf,
+        documentType: id.documentType,
+        document: id.document,
+      },
+    });
+  } catch (err) {
+    log.warn({ err: (err as Error).message }, "webhook event build failed");
+  }
+  return { ok: true, id: record.id, redirect };
 }

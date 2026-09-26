@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { accessRuleSchema } from "@/lib/portal/accessRules";
 import { actorOf, audit } from "@/lib/admin/audit";
+import { emitEvent } from "@/lib/integrations/webhooks";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,5 +36,9 @@ export async function POST(req: NextRequest) {
     update: data,
   });
   await audit(req, `rule.${r.kind}`, `${r.matchType}:${r.value}`, { reason: r.reason, expiresAt: r.expiresAt });
+  emitEvent("rule.created", {
+    data: { kind: r.kind, matchType: r.matchType, reason: r.reason ?? null, expiresAt: r.expiresAt ?? null, createdBy: actorOf(req) },
+    pii: { value: r.value },
+  });
   return NextResponse.json({ rule }, { status: 201 });
 }

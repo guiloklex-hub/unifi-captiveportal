@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { audit } from "@/lib/admin/audit";
+import { actorOf, audit } from "@/lib/admin/audit";
+import { emitEvent } from "@/lib/integrations/webhooks";
 import { prisma } from "@/lib/prisma";
 import { unauthorizeGuest } from "@/lib/unifi";
 import { logger } from "@/lib/logger";
@@ -35,5 +36,6 @@ export async function POST(req: NextRequest) {
 
   logger.info({ mac, site }, "guest revoked by admin");
   await audit(req, "guest.revoke", mac, { site });
+  emitEvent("guest.revoked", { data: { mac, site, revokedBy: actorOf(req), revokedAt: new Date().toISOString() } });
   return NextResponse.json({ ok: true });
 }

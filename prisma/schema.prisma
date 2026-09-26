@@ -124,6 +124,10 @@ model SystemSettings {
   marketingConsentMode String  @default("off")
   marketingConsentText String?
 
+  /// Relatório por e-mail: off | daily | weekly. Destinatários separados por vírgula.
+  reportFrequency  String  @default("off")
+  reportRecipients String?
+
   updatedAt DateTime @updatedAt
 }
 
@@ -259,4 +263,37 @@ model TermsVersion {
   hash      String   @id
   text      String
   createdAt DateTime @default(now())
+}
+
+/// Webhook de saída: o portal envia eventos (JSON assinado com HMAC-SHA256).
+model Webhook {
+  id             String    @id @default(cuid())
+  name           String
+  url            String
+  /// Segredo de assinatura, cifrado com AES-GCM.
+  secretEnc      String
+  /// Eventos separados por vírgula (guest.authorized, guest.revoked, rule.created).
+  events         String
+  /// Inclui nome, e-mail, telefone e documento no payload.
+  includePii     Boolean   @default(false)
+  enabled        Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  lastDeliveryAt DateTime?
+  lastStatus     Int?
+  lastError      String?
+}
+
+/// Chave da API pública (/api/v1). Só o hash SHA-256 do segredo é guardado.
+model ApiKey {
+  id         String    @id @default(cuid())
+  name       String
+  /// Parte pública exibida no painel e usada para localizar a chave.
+  prefix     String    @unique
+  hash       String
+  /// read | read:pii | write (separados por vírgula)
+  scopes     String
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+  revokedAt  DateTime?
 }

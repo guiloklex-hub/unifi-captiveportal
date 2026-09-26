@@ -74,6 +74,8 @@ export async function POST(req: NextRequest) {
         "socialMicrosoft",
         "marketingConsentMode",
         "marketingConsentText",
+        "reportFrequency",
+        "reportRecipients",
       ] as const
     )
       .filter((k) => data[k] !== undefined)

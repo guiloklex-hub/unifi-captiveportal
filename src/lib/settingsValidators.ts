@@ -71,6 +71,14 @@ export const settingsSchema = z.object({
     .max(300)
     .nullish()
     .transform((v) => v || null),
+  // Relatório por e-mail
+  reportFrequency: z.enum(["off", "daily", "weekly"]).optional(),
+  reportRecipients: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullish()
+    .transform((v) => v || null),
 });
 
 /** Sobrescritas de marca de um site. Campo vazio/nulo = herda da marca global. */

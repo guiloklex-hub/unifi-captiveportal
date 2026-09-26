@@ -16,6 +16,7 @@ const ADMIN_ONLY = [
   "/admin/unifi",
   "/admin/settings",
   "/admin/privacy",
+  "/admin/integrations",
   "/api/admin/users",
   "/api/admin/audit",
   "/api/admin/unifi",
@@ -24,6 +25,8 @@ const ADMIN_ONLY = [
   "/api/admin/upload",
   "/api/admin/cleanup",
   "/api/admin/privacy",
+  "/api/admin/integrations",
+  "/api/admin/reports",
 ];
 
 // Rotas que qualquer usuário autenticado acessa (inclusive mutações da própria conta).
