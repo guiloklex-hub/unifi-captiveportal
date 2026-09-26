@@ -29,6 +29,8 @@ export interface SystemSettings {
   socialMicrosoft: boolean;
   marketingConsentMode: "off" | "optional";
   marketingConsentText: string | null;
+  reportFrequency: "off" | "daily" | "weekly";
+  reportRecipients: string | null;
 }
 
 export type VerificationMode = "none" | "email" | "sms";
@@ -57,6 +59,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   socialMicrosoft: false,
   marketingConsentMode: "off",
   marketingConsentText: null,
+  reportFrequency: "off",
+  reportRecipients: null,
 };
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -94,6 +98,7 @@ function toSettings(row: Partial<SystemSettings> | null): SystemSettings {
   merged.fieldDocument = fieldMode(merged.fieldDocument);
   if (!["none", "email", "sms"].includes(merged.verificationMode)) merged.verificationMode = "none";
   if (merged.marketingConsentMode !== "optional") merged.marketingConsentMode = "off";
+  if (!["off", "daily", "weekly"].includes(merged.reportFrequency)) merged.reportFrequency = "off";
   // O campo verificado é sempre obrigatório.
   if (merged.verificationMode === "email") merged.fieldEmail = "required";
   if (merged.verificationMode === "sms") merged.fieldPhone = "required";

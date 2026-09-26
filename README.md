@@ -632,6 +632,17 @@ Quando o celular abre o link do QR code direto na câmera, a URL não traz o `?i
 
 ---
 
+### 8.5 Integrações (webhooks, API pública e relatórios)
+
+Em **Painel → Integrações** (admin):
+- **Webhooks** assinados (HMAC-SHA256) para `guest.authorized`, `guest.revoked` e `rule.created` — conecte n8n/Make/Zapier e, por eles, RD Station, HubSpot, Mailchimp, planilhas. Dados pessoais só vão se marcado.
+- **API pública v1** com chaves e escopos (`read`, `read:pii`, `write`): métricas, sessões, cadastros, criação de vouchers (ex.: PMS no check-in) e liberação de dispositivos.
+- **Relatório por e-mail** diário ou semanal (conexões, visitantes, formas de acesso, sites).
+
+Guia completo, formato dos eventos, verificação de assinatura e referência da API: **[docs/integracoes.md](docs/integracoes.md)**.
+
+---
+
 ## 9. Acessando o sistema
 
 | Interface | URL |
@@ -751,6 +762,19 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/api/admin/audit` | GET | Trilha de auditoria (JSON ou `?format=csv`) |
 | `/api/admin/privacy/subject` (+ `/export`, `/anonymize`) | GET/POST | LGPD: localizar, exportar (JSON) e anonimizar dados de um titular |
 | `/api/admin/privacy/terms` | GET | Versões dos termos aceitos e configuração de retenção |
+| `/api/admin/integrations/webhooks` (+ `/[id]`, `/[id]/test`) | GET/POST/PATCH/DELETE | Webhooks de saída |
+| `/api/admin/integrations/api-keys` (+ `/[id]`) | GET/POST/DELETE | Chaves da API pública |
+| `/api/admin/reports/send` | POST | Relatório por e-mail (cron diário; `?force=1` envia já) |
+
+### API pública (`Authorization: Bearer ucp_…`)
+
+| Endpoint | Método | Escopo |
+|---|---|---|
+| `/api/v1/metrics` | GET | `read` |
+| `/api/v1/sessions` | GET | `read` |
+| `/api/v1/registrations` | GET | `read` (`read:pii` para dados pessoais) |
+| `/api/v1/vouchers` | POST | `write` |
+| `/api/v1/devices/authorize` | POST | `write` |
 | `/api/admin/access-rules` e `/[id]` | GET/POST/DELETE | Bloqueios e liberações |
 | `/api/admin/guests/authorize` | POST | Liberar dispositivo agora (sem portal) |
 | `/api/admin/guests/extend` | POST | Estender sessão de um guest |
