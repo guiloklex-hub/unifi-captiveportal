@@ -12,6 +12,9 @@ const securityHeaders = [
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Imagem Docker: servidor "standalone" (só as dependências usadas em runtime).
+  // Instalações com PM2 continuam usando `next start` normalmente.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
   poweredByHeader: false,
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

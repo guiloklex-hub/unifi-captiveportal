@@ -130,7 +130,10 @@ export const getGuestRegistrationSchema = (dict: Dictionary["validation"], opts:
         .nullish()
         .transform((v) => (opts.allowForeignDocument && v === "passport" ? "passport" : "cpf")),
       document: text(40).transform(normalizeForeignDocument),
-      acceptTerms: z.literal(true, { error: dict.valTermsRequired }),
+      // Validado no superRefine (junto com os demais campos): uma falha aqui no
+      // objeto-base impediria o Zod de rodar o superRefine e o guest não veria
+      // os outros erros (ex.: "CPF inválido") até marcar os termos.
+      acceptTerms: z.boolean().nullish(),
       // Consentimento de marketing: opcional, separado dos termos (LGPD art. 8º §4º).
       marketingConsent: z
         .boolean()
@@ -141,14 +144,18 @@ export const getGuestRegistrationSchema = (dict: Dictionary["validation"], opts:
       ssid: unifiContextSchema.shape.ssid,
       site: unifiContextSchema.shape.site,
       originalUrl: unifiContextSchema.shape.originalUrl,
-      token: opts.requireToken
-        ? z.string().trim().min(8, dict.valTokenRequired)
-        : z.string().optional().nullable(),
+      token: z
+        .string()
+        .nullish()
+        .transform((v) => (v ?? "").trim() || null),
       fingerprint: unifiContextSchema.shape.fingerprint,
     })
     .superRefine((v, ctx) => {
       const need = (m: FieldMode, value: string) => m === "required" || (m === "optional" && value !== "");
       const issue = (path: string, message: string) => ctx.addIssue({ code: "custom", path: [path], message });
+
+      if (v.acceptTerms !== true) issue("acceptTerms", dict.valTermsRequired);
+      if (opts.requireToken && (v.token ?? "").length < 8) issue("token", dict.valTokenRequired);
 
       if (mode.name !== "hidden" && need(mode.name, v.fullName)) {
         if (v.fullName.length < 3) issue("fullName", dict.valNameRequired);
@@ -176,6 +183,7 @@ export const getGuestRegistrationSchema = (dict: Dictionary["validation"], opts:
       const foreign = v.documentType === "passport";
       return {
         ...v,
+        acceptTerms: true as const,
         fullName: mode.name === "hidden" ? "" : v.fullName,
         email: mode.email === "hidden" ? "" : v.email,
         phone: mode.phone === "hidden" ? "" : normalizePhone(v.phone),

@@ -6,6 +6,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **Docker**: imagem multi-stage (Next standalone, usuário não-root, migrações no boot, health check) e
+  `docker-compose.yml`; CI constrói a imagem e faz smoke test.
+- **Testes E2E** com Playwright contra a controladora simulada (portal, painel, vouchers, conexão UniFi, login).
+- Guia de atualização de versões anteriores, exemplo de nginx/HTTPS (`docs/nginx.md`) e README reorganizado.
 - **Integrações** (menu Integrações): webhooks assinados (HMAC-SHA256, retentativas, teste pelo painel) para
   `guest.authorized`, `guest.revoked` e `rule.created`; **API pública v1** com chaves e escopos (métricas, sessões,
   cadastros, criação de vouchers e liberação de dispositivos); **relatório por e-mail** diário/semanal.
@@ -67,6 +71,7 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
 ### Corrigido
+- Formulário do portal só mostrava os erros de campo (ex.: "CPF inválido") depois que os termos eram marcados.
 - Logo com URL externa quebrava o portal (`next/image` sem `remotePatterns`).
 - O QR code do token abria o portal sem MAC ("Acesso indisponível").
 - "Dispositivos online agora" contava guests expirados/não autorizados.
@@ -91,3 +96,87 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Sessões ativas listavam guests expirados que o `/stat/guest` ainda retorna.
 - Parâmetro `site` agora é validado antes de ir para o path da API da controladora (evita path injection).
 - Mensagens de erro do portal não expõem mais detalhes internos da controladora e estão traduzidas (PT/EN/ES).
+
+---
+
+## Histórico — atualizações (Junho 2026)
+
+#### QR Code do token (deep-link)
+- Cada token agora tem um **QR code** disponível no painel admin (`/admin/tokens`).
+- Escanear o QR abre o portal já com o campo "Token de acesso" preenchido — o convidado só precisa completar nome/email/CPF.
+- Endpoint: `GET /api/admin/tokens/{id}/qr` (SVG por padrão; `?format=png` para PNG). Header `X-Token-DeepLink` retorna a URL embutida.
+- Deep-link gerado: `${PUBLIC_PORTAL_URL ?? host}/guest/s/{site}?token={code}`. Configure `PUBLIC_PORTAL_URL` (seção 5.1) com o domínio público para que o QR aponte para a URL real que o convidado consegue acessar.
+- Adiciona dependência `qrcode` (~50KB) + `@types/qrcode`.
+
+#### Indicadores ao vivo no dashboard
+- Nova seção `LiveCounters` no topo de `/admin` com 4 KPIs que se atualizam a cada 15s:
+  - **Tokens emitidos · 24h** — `accessToken.count` na janela.
+  - **Dispositivos online agora** — `listActiveGuests()` direto na controladora (graceful fallback para `—` quando a UniFi está down, não derruba o painel).
+  - **Tráfego processado · 24h** — soma de `bytesTx + bytesRx` em `GuestRegistration` na janela.
+  - **Uptime do serviço** — `process.uptime()`.
+- Endpoint: `GET /api/admin/live-metrics`.
+
+#### Filtro multi-site no painel
+- Dropdown `SiteFilter` no topo de `/admin`, `/admin/logs` e `/admin/sessions`. Lista sites distintos derivados de `GuestRegistration.site` ∪ `AccessToken.site`.
+- Estado vive na query string (`?site=event-2026`), persiste entre navegações no admin. Selecionar "Todos os sites" remove o filtro.
+- `/api/admin/logs?site=...` (e CSV) aplicam o filtro; `/admin/sessions?site=...` repassa para `listActiveGuests(site)`; o dashboard propaga o filtro para todas as queries Prisma de `GuestRegistration` e `AccessToken`.
+- Endpoint: `GET /api/admin/sites` retorna `{ sites: [...] }`.
+
+---
+
+## Histórico — atualizações (Maio 2026)
+
+#### Dashboard ampliado — BI mais rico (sem novas dependências)
+- **Painel de tráfego (últimos 30 dias)** — totais de download/upload reconciliados, média por sessão, série temporal em `AreaChart` empilhada (TX/RX) e **top 10 consumidores** por CPF (nome, CPF mascarado, volume, sessões).
+- **Heatmap hora × dia da semana** — grade 7×24 com gradação de cor por intensidade, tooltips por célula. Substitui a leitura "linear" do pie de horários de pico por uma visualização de padrões semanais.
+- **Análise de dispositivos** — três donuts (sistema operacional, navegador, tipo de dispositivo) gerados via parser regex de `userAgent` em [src/lib/ua-parser.ts](src/lib/ua-parser.ts), sem dependência externa.
+- **Fingerprint analytics** — KPIs de fingerprints únicos + média por CPF + tabela de fingerprints **suspeitos** (mesmo fingerprint observado em CPFs distintos no período → sinal de compartilhamento ou spoofing).
+- **Tokens enriquecidos** — além das contagens existentes: **taxa média de aproveitamento** (`usedCount/maxUses`), **bytes consumidos por token** (últimos 30d) e lista de **tokens criados há >7d sem nenhum uso** (estoque parado para revisar antes de expirar).
+- Helpers reutilizáveis: [src/lib/format.ts](src/lib/format.ts) (`formatBytes`, `maskCpf`, `bigIntToNumber`).
+- Tudo computado a partir dos dados já capturados (`bytesTx/bytesRx`, `userAgent`, `fingerprint`, `tokenId`); sem novas tabelas, sem nova migration.
+
+## Histórico — atualizações (Abril 2026)
+
+#### Sistema de tokens de acesso
+- **Tokens criados pelo admin** com parâmetros próprios: duração da sessão, banda (down/up Kbps), quota de dados (MB), data/hora de expiração e número máximo de usos.
+- **Toggle global** "Exigir token de acesso" no painel — quando ativo, o campo aparece no formulário do guest; quando desativo, o fluxo padrão (apenas dados pessoais) é preservado.
+- **Locks via `.env`** — variáveis `TOKEN_LOCK_*` travam campos individuais do formulário admin (útil para padronizar políticas em deploys multi-cliente).
+- **Geração de código** com `crypto.randomBytes(12)` em base32 sem caracteres ambíguos (formato `XXXX-XXXX-XXXX`).
+- **Atomicidade**: reserva de uso via raw SQL `UPDATE ... WHERE usedCount < maxUses` evita race condition entre guests competindo pelo último uso.
+- **Idempotência**: re-autorização do mesmo MAC no mesmo dia não consome uso adicional do token.
+- **Compensação**: se a UniFi falhar após reserva, o uso é liberado automaticamente.
+- **Renovação** ("estender") — admin pode adicionar minutos à validade e/ou usos extras a tokens ainda ativos.
+- **Revogação em cascata** — ao revogar um token, opção de desconectar via UniFi todos os guests ativos que o usaram.
+
+#### Multi-site UniFi
+- Cada token pode ser vinculado a um site específico da controladora; valor padrão `default`.
+- `authorizeGuest`, `unauthorizeGuest` e `listActiveGuests` aceitam parâmetro `site` opcional, com fallback para `UNIFI_SITE` do `.env`.
+
+#### Métricas e auditoria
+- **Dashboard de tokens**: contagens por status (ativo/expirado/revogado/esgotado), tempo médio até primeiro uso, top 5 tokens mais utilizados.
+- **Coluna Token nos logs** (UI + CSV) — admin enxerga qual token autorizou cada guest.
+- **Endpoint de métricas dedicado** `/api/admin/tokens/metrics` para integrações.
+- **Reconciliação UniFi ↔ DB** — endpoint `POST /api/admin/reconcile` atualiza `bytesTx`, `bytesRx`, `lastSeenAt` consultando `/stat/guest`.
+
+#### Segurança
+- **Fingerprint do dispositivo** (SHA-256 de UA + idioma + timezone + plataforma + tela + memória) gravado em cada autorização — sinal de defesa em profundidade contra MAC spoofing. Logs de warning quando o mesmo MAC + token retorna fingerprint diferente.
+- **Quota de dados** (`bytesQuotaMB`) agora persistida no `GuestRegistration` para auditoria.
+- **Endpoint público de sessão** `/api/portal/session/[id]` devolve apenas dados não-sensíveis (sem PII), com janela de 5 min após autorização.
+
+#### UX
+- **Tela de sucesso enriquecida** — mostra tempo restante (atualizado a cada 30s), duração total, banda, quota e SSID.
+- **Máscara de token** no formulário — formatação automática `XXXX-XXXX-XXXX`, `autoCapitalize="characters"`, `spellCheck=false`.
+- **Tradução completa** das novas funcionalidades para PT/EN/ES.
+
+#### Bloqueio de 1 dispositivo por CPF
+- **Toggle global** "Limitar a 1 dispositivo por CPF" em `SystemSettings` (default desligado) — impede que o mesmo CPF autorize um segundo MAC enquanto a sessão atual estiver viva (`authorizedAt + durationMin > agora`).
+- **Mesmo MAC sempre passa**: reautorização do dispositivo já registrado é idempotente (refresh, troca de dia, etc.).
+- **Bypass por token**: quando `requireToken=true` e o cliente apresenta token válido, o bloqueio não se aplica — o admin já controla via emissão do token.
+- **Override do admin**: botão "Liberar CPF" em `/admin/sessions` marca as sessões vivas como revogadas (`revokedAt`) e dispara `unauthorize` na UniFi (best-effort).
+- **Auditoria**: campo `GuestRegistration.revokedAt` distingue revogação manual de expiração natural, sem sujar `durationMin`.
+
+#### Correções
+- **`UniFiUnavailableError`** corretamente reconhecida em catch (estava sendo coberta apenas pelo `export {}` no fim do arquivo — confirmamos funcionalidade).
+- **Filtro de payload UniFi** agora usa `typeof === "number" && > 0` em vez de truthy-coercion (`if (opts.upKbps)`), preservando intenção de "sem limite" via `0`/ausente.
+- **`prisma.$executeRaw`** convertido para `Number()` antes da comparação — defesa contra drivers que retornem `bigint`.
+- **Idempotência da reserva de token** — refresh do navegador / retentativa no mesmo dia não consome usos extras.
