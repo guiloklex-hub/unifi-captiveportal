@@ -31,6 +31,8 @@ type GlobalSettings = {
   otpPreAuthMinutes: string;
   socialGoogle: boolean;
   socialMicrosoft: boolean;
+  marketingConsentMode: "off" | "optional";
+  marketingConsentText: string;
 };
 
 type Capabilities = {
@@ -94,6 +96,8 @@ export default function SettingsPage() {
         otpPreAuthMinutes: str(data.otpPreAuthMinutes ?? 10),
         socialGoogle: Boolean(data.socialGoogle),
         socialMicrosoft: Boolean(data.socialMicrosoft),
+        marketingConsentMode: data.marketingConsentMode === "optional" ? "optional" : "off",
+        marketingConsentText: str(data.marketingConsentText),
       });
       setCaps(data.capabilities ?? null);
       setRequireTokenLocked(locks?.requireToken !== undefined && locks?.requireToken !== null);
@@ -474,6 +478,30 @@ export default function SettingsPage() {
                 {requireTokenLocked && <span className="mt-1 block text-xs text-amber-700">{t.lockedByEnv}</span>}
               </span>
             </label>
+
+            <div className="mt-4 space-y-2 border-t pt-4">
+              <label className="flex cursor-pointer items-start gap-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-5 w-5"
+                  checked={settings.marketingConsentMode === "optional"}
+                  onChange={(e) => set("marketingConsentMode", e.target.checked ? "optional" : "off")}
+                />
+                <span>
+                  <span className="block text-sm font-medium">{t.marketingLabel}</span>
+                  <span className="block text-xs text-muted-foreground">{t.marketingHint}</span>
+                </span>
+              </label>
+              {settings.marketingConsentMode === "optional" && (
+                <Input
+                  aria-label={t.marketingTextLabel}
+                  placeholder={t.marketingTextPlaceholder}
+                  value={settings.marketingConsentText}
+                  onChange={(e) => set("marketingConsentText", e.target.value)}
+                  maxLength={300}
+                />
+              )}
+            </div>
 
             <label className="mt-4 flex cursor-pointer items-start gap-3 border-t pt-4">
               <input

@@ -6,6 +6,7 @@ import { grantGuestAccess, type AuthMethod } from "@/lib/portal/grantAccess";
 import { portalRateLimit } from "@/lib/portal/rateLimit";
 import { accessRequestFrom, parseGuestForm } from "@/lib/portal/form";
 import { consumeSocialTicket } from "@/lib/portal/oauth";
+import { currentTermsHash } from "@/lib/privacy";
 
 export const runtime = "nodejs";
 
@@ -46,6 +47,7 @@ export async function POST(req: NextRequest) {
     accessRequestFrom(data, authMethod, {
       userAgent: req.headers.get("user-agent") ?? undefined,
       ipAddress: ip !== "unknown" ? ip : undefined,
+      termsHash: await currentTermsHash(settings, data.site),
     }),
     settings,
     dict,

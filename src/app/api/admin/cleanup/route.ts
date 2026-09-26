@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { audit } from "@/lib/admin/audit";
 import { prisma } from "@/lib/prisma";
 import { logger } from "@/lib/logger";
+import { anonymizeRegistrations, piiRetentionDays } from "@/lib/privacy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,6 +33,14 @@ export async function POST(req: NextRequest) {
     where: { authorizedAt: { lt: cutoff } },
   });
 
+  // LGPD: dados pessoais podem ter retenção menor que o registro de conexão.
+  // Após PII_RETENTION_DAYS o cadastro é anonimizado (MAC/IP/horários ficam).
+  const piiDays = piiRetentionDays();
+  const anonymized =
+    piiDays > 0 && piiDays < retention
+      ? await anonymizeRegistrations({ authorizedAt: { lt: new Date(Date.now() - piiDays * 24 * 60 * 60 * 1000) } })
+      : 0;
+
   // Códigos de verificação e logins sociais: dados transitórios (24 h bastam).
   const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [otp, oauth] = await Promise.all([
@@ -40,16 +49,18 @@ export async function POST(req: NextRequest) {
   ]);
 
   logger.info(
-    { retention, cutoff: cutoff.toISOString(), deleted: result.count, otp: otp.count, oauth: oauth.count },
+    { retention, cutoff: cutoff.toISOString(), deleted: result.count, anonymized, otp: otp.count, oauth: oauth.count },
     "cleanup: GuestRegistration purge",
   );
 
-  await audit(req, "cleanup", null, { retention, deleted: result.count });
+  await audit(req, "cleanup", null, { retention, deleted: result.count, piiDays, anonymized });
   return NextResponse.json({
     ok: true,
     retentionDays: retention,
     cutoff: cutoff.toISOString(),
     deleted: result.count,
+    piiRetentionDays: piiDays,
+    anonymized,
     deletedOtpChallenges: otp.count,
     deletedOAuthLogins: oauth.count,
   });

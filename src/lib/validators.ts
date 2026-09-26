@@ -131,6 +131,11 @@ export const getGuestRegistrationSchema = (dict: Dictionary["validation"], opts:
         .transform((v) => (opts.allowForeignDocument && v === "passport" ? "passport" : "cpf")),
       document: text(40).transform(normalizeForeignDocument),
       acceptTerms: z.literal(true, { error: dict.valTermsRequired }),
+      // Consentimento de marketing: opcional, separado dos termos (LGPD art. 8º §4º).
+      marketingConsent: z
+        .boolean()
+        .nullish()
+        .transform((v) => v === true),
       mac: z.string().trim().regex(MAC_RE, dict.valMacMissing),
       apMac: unifiContextSchema.shape.apMac,
       ssid: unifiContextSchema.shape.ssid,

@@ -24,7 +24,7 @@ export async function POST(req: NextRequest) {
   const mac = typeof body?.mac === "string" ? body.mac : "";
   if (!challengeId || !code || !mac) return NextResponse.json({ error: dict.portal.errInvalidData }, { status: 400 });
 
-  const result = await verifyOtp<GuestRegistrationInput>(challengeId, code, mac);
+  const result = await verifyOtp<GuestRegistrationInput & { termsHash?: string }>(challengeId, code, mac);
   if (!result.ok) {
     const message =
       result.reason === "invalid_code"
@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
     accessRequestFrom(result.payload, result.channel === "email" ? "otp-email" : "otp-sms", {
       userAgent: req.headers.get("user-agent") ?? undefined,
       ipAddress: ip !== "unknown" ? ip : undefined,
+      termsHash: result.payload.termsHash ?? null,
     }),
     settings,
     dict,

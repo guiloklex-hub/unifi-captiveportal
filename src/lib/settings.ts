@@ -27,6 +27,8 @@ export interface SystemSettings {
   otpPreAuthMinutes: number;
   socialGoogle: boolean;
   socialMicrosoft: boolean;
+  marketingConsentMode: "off" | "optional";
+  marketingConsentText: string | null;
 }
 
 export type VerificationMode = "none" | "email" | "sms";
@@ -53,6 +55,8 @@ export const DEFAULT_SETTINGS: SystemSettings = {
   otpPreAuthMinutes: 10,
   socialGoogle: false,
   socialMicrosoft: false,
+  marketingConsentMode: "off",
+  marketingConsentText: null,
 };
 
 const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
@@ -89,6 +93,7 @@ function toSettings(row: Partial<SystemSettings> | null): SystemSettings {
   merged.fieldPhone = fieldMode(merged.fieldPhone);
   merged.fieldDocument = fieldMode(merged.fieldDocument);
   if (!["none", "email", "sms"].includes(merged.verificationMode)) merged.verificationMode = "none";
+  if (merged.marketingConsentMode !== "optional") merged.marketingConsentMode = "off";
   // O campo verificado é sempre obrigatório.
   if (merged.verificationMode === "email") merged.fieldEmail = "required";
   if (merged.verificationMode === "sms") merged.fieldPhone = "required";

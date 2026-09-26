@@ -6,6 +6,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 ## [Não lançado]
 
 ### Adicionado
+- **LGPD** (menu Privacidade): versão dos termos aceita por cadastro (hash + texto arquivado), consentimento de
+  marketing separado e opcional, exportação (JSON) e anonimização de dados por titular, retenção de dados pessoais
+  (`PII_RETENTION_DAYS`) separada do registro de conexão, mascaramento de PII para o papel "Somente leitura".
+  Convidado recorrente precisa aceitar de novo quando os termos mudam.
 - **Usuários do painel com papéis** (Administrador, Operador, Somente leitura), senhas com scrypt, bloqueio após
   5 tentativas e **2FA TOTP** por usuário. RBAC aplicado no `proxy.ts` a páginas e APIs.
 - **Trilha de auditoria** de todas as ações administrativas, com filtro e exportação CSV.

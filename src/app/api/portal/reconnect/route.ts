@@ -6,6 +6,7 @@ import { unifiContextSchema } from "@/lib/validators";
 import { grantGuestAccess } from "@/lib/portal/grantAccess";
 import { findReturningGuest } from "@/lib/portal/returning";
 import { findAllowRule } from "@/lib/portal/accessRules";
+import { currentTermsHash } from "@/lib/privacy";
 import { portalRateLimit } from "@/lib/portal/rateLimit";
 
 export const runtime = "nodejs";
@@ -26,7 +27,8 @@ export async function POST(req: NextRequest) {
 
   // Dispositivo liberado pelo admin tem precedência sobre o "lembrar dispositivo".
   const allow = await findAllowRule(ctx.mac);
-  const returning = allow ? null : await findReturningGuest(ctx.mac, settings);
+  const termsHash = await currentTermsHash(settings, ctx.site);
+  const returning = allow ? null : await findReturningGuest(ctx.mac, settings, termsHash);
   // 410: o cliente deve cair para o formulário normal.
   if (!allow && !returning) return NextResponse.json({ error: dict.portal.errReturningExpired }, { status: 410 });
 
@@ -43,6 +45,7 @@ export async function POST(req: NextRequest) {
       ipAddress: ip !== "unknown" ? ip : undefined,
       authMethod: allow ? "allowlist" : "returning",
       adminGrant: allow ? { minutes: allow.durationMin } : undefined,
+      consent: returning?.consent,
     },
     settings,
     dict,

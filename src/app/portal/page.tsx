@@ -10,6 +10,7 @@ import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
 import { findReturningGuest } from "@/lib/portal/returning";
 import { findAllowRule } from "@/lib/portal/accessRules";
 import { availableProviders, peekSocialTicket } from "@/lib/portal/oauth";
+import { currentTermsHash } from "@/lib/privacy";
 import { contrastForeground } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -80,7 +81,7 @@ export default async function PortalPage({
   const returning = allowed
     ? { firstName: "" }
     : !preview && !social && MAC_RE.test(mac)
-      ? await findReturningGuest(mac, settings)
+      ? await findReturningGuest(mac, settings, await currentTermsHash(settings, site))
           .then((r) => (r ? { firstName: r.firstName } : null))
           .catch(() => null)
       : null;
@@ -119,6 +120,7 @@ export default async function PortalPage({
             socialProviders={availableProviders(settings)}
             social={social}
             socialError={Boolean(param("socialError"))}
+            marketing={{ enabled: settings.marketingConsentMode === "optional", text: settings.marketingConsentText }}
           />
         </Suspense>
       </div>

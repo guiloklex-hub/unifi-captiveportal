@@ -69,6 +69,8 @@ vi.mock("@/lib/messaging/sms", () => ({ sendSms, smsConfigured: () => true }));
 const authorizeGuest = vi.fn();
 vi.mock("@/lib/unifi", async () => ({ ...(await import("@/lib/unifi/errors")), authorizeGuest }));
 
+vi.mock("@/lib/privacy", () => ({ currentTermsHash: vi.fn(async () => "termos-v1") }));
+
 const grantGuestAccess = vi.fn();
 vi.mock("@/lib/portal/grantAccess", () => ({ grantGuestAccess }));
 
@@ -139,7 +141,12 @@ describe("fluxo de verificação por e-mail", () => {
     const ok = await otpVerify.POST(post({ challengeId: body.challengeId, code, mac: form.mac }));
     expect(ok.status).toBe(200);
     expect(grantGuestAccess).toHaveBeenCalledWith(
-      expect.objectContaining({ authMethod: "otp-email", identity: expect.objectContaining({ email: "maria@exemplo.com" }) }),
+      expect.objectContaining({
+        authMethod: "otp-email",
+        identity: expect.objectContaining({ email: "maria@exemplo.com" }),
+        // Versão dos termos aceita no envio do formulário segue até o registro final.
+        consent: { termsHash: "termos-v1", marketing: false },
+      }),
       expect.anything(),
       expect.anything(),
     );

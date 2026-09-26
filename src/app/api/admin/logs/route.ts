@@ -3,6 +3,15 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { csvHeaderLine, csvRow, type CSVColumn } from "@/lib/csv";
 import { jsonSafe } from "@/lib/utils";
+import { ROLE_HEADER } from "@/lib/admin/audit";
+import { maskCpf, maskDocument, maskEmail, maskPhone } from "@/lib/format";
+
+type Pii = { cpf: string; email: string; phone: string; document: string | null };
+
+/** Papel "somente leitura" recebe CPF, e-mail, telefone e documento mascarados. */
+function maskPii<T extends Pii>(row: T): T {
+  return { ...row, cpf: maskCpf(row.cpf), email: maskEmail(row.email), phone: maskPhone(row.phone), document: maskDocument(row.document) };
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,6 +29,9 @@ type LogRow = {
   ssid: string;
   site: string;
   formaAcesso: string;
+  consentimentoMarketing: string;
+  versaoTermos: string;
+  anonimizado: string;
   tokenCode: string;
   tokenDescription: string;
   autorizadoEm: string;
@@ -36,6 +48,9 @@ const CSV_COLUMNS: CSVColumn<LogRow>[] = [
   { key: "ssid", header: "SSID" },
   { key: "site", header: "Site" },
   { key: "formaAcesso", header: "Forma de acesso" },
+  { key: "consentimentoMarketing", header: "Consentimento marketing" },
+  { key: "versaoTermos", header: "Versão dos termos (SHA-256)" },
+  { key: "anonimizado", header: "Anonimizado em" },
   { key: "tokenCode", header: "Token" },
   { key: "tokenDescription", header: "Token (descrição)" },
   { key: "autorizadoEm", header: "Autorizado em" },
@@ -71,6 +86,7 @@ function buildWhere(sp: URLSearchParams): Prisma.GuestRegistrationWhereInput {
 export async function GET(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const where = buildWhere(sp);
+  const masked = req.headers.get(ROLE_HEADER) === "viewer";
   const format = sp.get("format");
   const page = Math.max(1, parseInt(sp.get("page") ?? "1", 10));
   const pageSize = Math.min(500, Math.max(1, parseInt(sp.get("pageSize") ?? "20", 10)));
@@ -96,7 +112,8 @@ export async function GET(req: NextRequest) {
               include: { token: { select: { code: true, description: true } } },
             });
             if (batch.length === 0) break;
-            for (const r of batch) {
+            for (const raw of batch) {
+              const r = masked ? maskPii(raw) : raw;
               const row: LogRow = {
                 id: r.id,
                 nome: r.fullName,
@@ -108,6 +125,9 @@ export async function GET(req: NextRequest) {
                 ssid: r.ssid ?? "",
                 site: r.site ?? "",
                 formaAcesso: r.authMethod,
+                consentimentoMarketing: r.marketingConsent ? "sim" : "não",
+                versaoTermos: r.termsHash ?? "",
+                anonimizado: r.anonymizedAt?.toISOString() ?? "",
                 tokenCode: r.token?.code ?? "",
                 tokenDescription: r.token?.description ?? "",
                 autorizadoEm: r.authorizedAt.toISOString(),
@@ -145,5 +165,5 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  return NextResponse.json(jsonSafe({ total, rows, page, pageSize }));
+  return NextResponse.json(jsonSafe({ total, rows: masked ? rows.map(maskPii) : rows, page, pageSize }));
 }

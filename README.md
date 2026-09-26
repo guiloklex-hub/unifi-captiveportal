@@ -381,6 +381,7 @@ Todas ficam no arquivo `.env`.
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
 | `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
+| `PII_RETENTION_DAYS` | Não | Anonimiza nome/e-mail/telefone/documentos após N dias, mantendo o registro de conexão até `GUEST_RETENTION_DAYS`. Vazio = desligado | `90` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
 | `PUBLIC_PORTAL_URL` | Não | URL pública (com protocolo) usada para gerar deep-links de QR de token. Se vazio, usa o `Host` da requisição admin — que pode ser interno (`127.0.0.1`) e inviável para escanear. | `https://wifi.empresa.com.br` |
 
@@ -748,6 +749,8 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 | `/api/admin/users` e `/api/admin/users/[id]` | GET/POST/PATCH/DELETE | Usuários do painel (admin) |
 | `/api/admin/account`, `/account/password`, `/account/totp` | GET/POST/PUT/DELETE | Conta logada: senha e 2FA |
 | `/api/admin/audit` | GET | Trilha de auditoria (JSON ou `?format=csv`) |
+| `/api/admin/privacy/subject` (+ `/export`, `/anonymize`) | GET/POST | LGPD: localizar, exportar (JSON) e anonimizar dados de um titular |
+| `/api/admin/privacy/terms` | GET | Versões dos termos aceitos e configuração de retenção |
 | `/api/admin/access-rules` e `/[id]` | GET/POST/DELETE | Bloqueios e liberações |
 | `/api/admin/guests/authorize` | POST | Liberar dispositivo agora (sem portal) |
 | `/api/admin/guests/extend` | POST | Estender sessão de um guest |
@@ -815,9 +818,23 @@ npx prisma studio    # abre UI em http://localhost:5555
 
 ## 15. LGPD e segurança
 
-- **Termos de uso**: modal com rolagem; aceite registrado por guest.
-- **Mínimo necessário**: a tela de sucesso lê via endpoint dedicado que **não devolve** CPF, e-mail, telefone — apenas duração, banda, quota, SSID.
-- **Tokens em texto plano no DB**: aceito como tradeoff (curta validade, baixo blast radius). Recomenda-se cifrar o disco do servidor.
+### 15.0 Privacidade (LGPD) — menu **Privacidade (LGPD)**, só admin
+
+- **Minimização**: formulário configurável (só pedir o necessário) — seção **8.1**.
+- **Consentimento com prova**: cada cadastro guarda o **hash SHA-256 da versão dos termos** aceita; o texto de cada versão fica arquivado (tabela `TermsVersion`) e pode ser consultado no painel. Se os termos mudarem, o convidado recorrente precisa aceitar de novo.
+- **Consentimento de marketing separado** (opcional, desmarcado por padrão, texto editável em Customização) — gravado por cadastro e exportado no CSV.
+- **Direitos do titular** (art. 18): localizar os dados por CPF, e-mail, documento ou telefone; **exportar** tudo em JSON (acesso/portabilidade, com as versões dos termos aceitos) e **anonimizar** (eliminação). Ambas as ações vão para a auditoria.
+- **Retenção em dois níveis**: `PII_RETENTION_DAYS` anonimiza os dados pessoais antes; `GUEST_RETENTION_DAYS` (padrão 365 — Marco Civil, art. 13) apaga o registro de conexão (MAC, IP, horários). A anonimização mantém o registro de conexão.
+- **Mínimo necessário para quem só consulta**: o papel "Somente leitura" recebe CPF, e-mail, telefone e documento **mascarados** (tela e CSV).
+- A tela de sucesso lê um endpoint que **não devolve** CPF, e-mail ou telefone.
+
+> **Criptografia de CPF no banco**: não foi adotada criptografia por coluna — ela impediria as buscas/índices usados no bloqueio de CPF, na busca de logs e no BI, e a perda da chave tornaria os dados irrecuperáveis. A proteção adotada é: anonimização por prazo, mascaramento por papel, auditoria e controle de acesso. **Recomendado**: disco cifrado (LUKS/BitLocker) e backups cifrados. Segredos (senha/API Key da UniFi, 2FA) **são** cifrados com AES-256-GCM.
+>
+> Este projeto oferece ferramentas; a adequação à LGPD (base legal, aviso de privacidade, encarregado/DPO) é responsabilidade do controlador — revise os termos de uso com seu jurídico.
+
+### 15.0.1 Segurança geral
+
+- **Tokens em texto plano no DB**: aceito como tradeoff (curta validade, baixo blast radius).
 - **HMAC** assina o cookie de sessão admin (TTL 12h, `httpOnly`, `sameSite=lax`).
 - **Rate limit**: 10 req/min por IP em `/api/portal/authorize` (quando não há proxy reverso informando o IP, a chave passa a ser o MAC do dispositivo) + teto global de 600 req/min.
 - **Cabeçalhos de segurança** em todas as rotas: `X-Content-Type-Options`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy`.

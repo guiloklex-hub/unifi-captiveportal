@@ -32,7 +32,7 @@ export function identityFrom(data: GuestRegistrationInput): GuestIdentity {
 export function accessRequestFrom(
   data: GuestRegistrationInput,
   authMethod: AuthMethod,
-  meta: { userAgent?: string; ipAddress?: string },
+  meta: { userAgent?: string; ipAddress?: string; termsHash?: string | null },
 ): AccessRequest {
   return {
     identity: identityFrom(data),
@@ -44,6 +44,8 @@ export function accessRequestFrom(
     fingerprint: data.fingerprint ?? null,
     token: data.token,
     authMethod,
-    ...meta,
+    userAgent: meta.userAgent,
+    ipAddress: meta.ipAddress,
+    consent: { termsHash: meta.termsHash ?? null, marketing: data.marketingConsent },
   };
 }

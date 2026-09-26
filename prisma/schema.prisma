@@ -35,8 +35,14 @@ model GuestRegistration {
   document     String?
   /// Identidade do visitante para BI: cpf | doc:<documento> | email:<email> | mac:<mac>.
   visitorKey   String    @default("")
-  /// form | token | returning (e, na Fase 2b, otp-email | otp-sms | google | microsoft)
+  /// form | token | returning | otp-email | otp-sms | google | microsoft | allowlist | admin
   authMethod   String    @default("form")
+  /// LGPD: versão (SHA-256) dos termos aceitos — texto guardado em TermsVersion.
+  termsHash        String?
+  /// LGPD: consentimento opcional e separado para comunicações de marketing.
+  marketingConsent Boolean   @default(false)
+  /// Dados pessoais removidos (retenção de PII ou pedido do titular); conexão mantida.
+  anonymizedAt     DateTime?
 
   tokenId String?
   token   AccessToken? @relation(fields: [tokenId], references: [id], onDelete: SetNull)
@@ -50,6 +56,7 @@ model GuestRegistration {
   @@index([site, authorizedAt])
   @@index([cpf, revokedAt, authorizedAt])
   @@index([visitorKey])
+  @@index([anonymizedAt, authorizedAt])
 }
 
 model AccessToken {
@@ -112,6 +119,10 @@ model SystemSettings {
   /// Login social (credenciais OAuth no .env).
   socialGoogle       Boolean @default(false)
   socialMicrosoft    Boolean @default(false)
+
+  /// LGPD: checkbox de consentimento de marketing no portal (off | optional).
+  marketingConsentMode String  @default("off")
+  marketingConsentText String?
 
   updatedAt DateTime @updatedAt
 }
@@ -241,4 +252,11 @@ model AccessRule {
 
   @@unique([kind, matchType, value])
   @@index([matchType, value])
+}
+
+/// Texto dos termos de uso em cada versão aceita (LGPD: prova do que foi aceito).
+model TermsVersion {
+  hash      String   @id
+  text      String
+  createdAt DateTime @default(now())
 }

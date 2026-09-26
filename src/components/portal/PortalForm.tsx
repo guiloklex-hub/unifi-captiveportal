@@ -50,6 +50,8 @@ export type PortalFormProps = {
   /** Identidade retornada pelo login social (ticket de uso único). */
   social: { provider: Provider; name: string; email: string; ticket: string } | null;
   socialError: boolean;
+  /** Checkbox opcional de marketing (LGPD: separado do aceite dos termos). */
+  marketing: { enabled: boolean; text: string | null };
 };
 
 export function PortalForm({
@@ -63,6 +65,7 @@ export function PortalForm({
   socialProviders,
   social,
   socialError,
+  marketing,
 }: PortalFormProps) {
   const router = useRouter();
   const params = useSearchParams();
@@ -121,6 +124,7 @@ export function PortalForm({
       documentType: config.allowForeignDocument && suggestForeign ? "passport" : "cpf",
       token: formatTokenCode(params.get("token") ?? ""),
       acceptTerms: false as unknown as true,
+      marketingConsent: false,
       ...unifiCtx,
     },
   });
@@ -541,6 +545,19 @@ export function PortalForm({
             </span>
           </label>
           {errors.acceptTerms && <p className="text-xs text-destructive">{errors.acceptTerms.message as string}</p>}
+
+          {marketing.enabled && (
+            <label className="-ml-3 flex cursor-pointer items-start gap-3 rounded-lg p-3 hover:bg-slate-50">
+              <input
+                type="checkbox"
+                className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300"
+                {...register("marketingConsent")}
+              />
+              <span className="text-sm leading-snug text-slate-600">
+                {marketing.text || dict.portal.marketingConsentDefault}
+              </span>
+            </label>
+          )}
 
           {errorBox}
 

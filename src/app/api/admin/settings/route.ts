@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
         "otpPreAuthMinutes",
         "socialGoogle",
         "socialMicrosoft",
+        "marketingConsentMode",
+        "marketingConsentText",
       ] as const
     )
       .filter((k) => data[k] !== undefined)

@@ -41,3 +41,20 @@ export function maskVisitorKey(key: string): string {
   if (key.startsWith("mac:")) return key.slice(4);
   return key;
 }
+
+/** Mascaramento de dados pessoais para quem só tem leitura (papel "viewer"). */
+export function maskEmail(email: string): string {
+  if (!email) return email;
+  const [user, domain] = email.split("@");
+  return `${(user ?? "").slice(0, 2)}•••@${domain ?? ""}`;
+}
+
+export function maskPhone(phone: string): string {
+  if (!phone) return phone;
+  return `•••••${phone.slice(-4)}`;
+}
+
+export function maskDocument(doc: string | null): string | null {
+  if (!doc) return doc;
+  return `${"•".repeat(Math.max(0, doc.length - 3))}${doc.slice(-3)}`;
+}

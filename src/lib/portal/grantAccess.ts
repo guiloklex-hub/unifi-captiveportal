@@ -59,6 +59,8 @@ export type AccessRequest = {
   ipAddress?: string;
   token?: string | null;
   authMethod: AuthMethod;
+  /** LGPD: versão dos termos aceitos e consentimento de marketing. */
+  consent?: { termsHash: string | null; marketing: boolean };
   /**
    * Liberação decidida pelo admin (lista de liberação / "liberar dispositivo"):
    * ignora token e bloqueio de CPF e usa a duração informada.
@@ -217,6 +219,9 @@ export async function grantGuestAccess(
     document: id.document,
     visitorKey: visitorKeyOf({ cpf: id.cpf, document: id.document, email: id.email, mac }),
     authMethod,
+    termsHash: req.consent?.termsHash ?? null,
+    marketingConsent: req.consent?.marketing ?? false,
+    anonymizedAt: null,
     apMac: req.apMac,
     ssid: req.ssid,
     site,

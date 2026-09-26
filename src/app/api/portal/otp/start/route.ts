@@ -19,6 +19,7 @@ import {
 } from "@/lib/portal/otp";
 import { sendEmail } from "@/lib/messaging/email";
 import { sendSms } from "@/lib/messaging/sms";
+import { currentTermsHash } from "@/lib/privacy";
 
 export const runtime = "nodejs";
 
@@ -77,7 +78,8 @@ export async function POST(req: NextRequest) {
       channel,
       destination,
       codeHash: "pending",
-      payload: JSON.stringify(data),
+      // Os termos vigentes no momento do aceite seguem junto para o registro final.
+      payload: JSON.stringify({ ...data, termsHash: await currentTermsHash(settings, data.site) }),
       expiresAt: new Date(Date.now() + OTP_TTL_MS),
     },
   });

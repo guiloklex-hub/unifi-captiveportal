@@ -30,15 +30,18 @@ type LogRow = {
   token?: { id: string; code: string; description: string | null } | null;
 };
 
+// Valores já mascarados pelo servidor (papel "somente leitura") são exibidos como vieram.
+const isMasked = (v: string) => /[*•]/.test(v);
+
 function docLabel(r: Pick<LogRow, "cpf" | "document" | "documentType">): string {
-  if (r.cpf) return maskCPF(r.cpf);
+  if (r.cpf) return isMasked(r.cpf) ? r.cpf : maskCPF(r.cpf);
   if (r.document) return `${r.documentType === "passport" ? "Passaporte" : "Doc"} ${r.document}`;
   return "—";
 }
 
 function phoneLabel(phone: string): string {
   if (!phone) return "—";
-  return phone.startsWith("+") ? phone : maskPhoneBR(phone);
+  return phone.startsWith("+") || isMasked(phone) ? phone : maskPhoneBR(phone);
 }
 
 export function LogsTable({ dict }: { dict: Dictionary }) {

@@ -63,6 +63,14 @@ export const settingsSchema = z.object({
   otpPreAuthMinutes: z.coerce.number().int().min(0).max(60).optional(),
   socialGoogle: z.boolean().optional(),
   socialMicrosoft: z.boolean().optional(),
+  // LGPD
+  marketingConsentMode: z.enum(["off", "optional"]).optional(),
+  marketingConsentText: z
+    .string()
+    .trim()
+    .max(300)
+    .nullish()
+    .transform((v) => v || null),
 });
 
 /** Sobrescritas de marca de um site. Campo vazio/nulo = herda da marca global. */

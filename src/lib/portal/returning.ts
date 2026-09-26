@@ -12,13 +12,25 @@ import type { GuestIdentity } from "./grantAccess";
  * Risco aceito e documentado: MAC pode ser clonado. Só o primeiro nome é
  * exibido na tela, para não expor dados pessoais a quem forjar um MAC.
  */
-export type ReturningGuest = { firstName: string; identity: GuestIdentity };
+export type ReturningGuest = {
+  firstName: string;
+  identity: GuestIdentity;
+  consent: { termsHash: string | null; marketing: boolean };
+};
 
 export function rememberEnabled(settings: SystemSettings): boolean {
   return settings.rememberDeviceDays > 0 && !settings.requireToken;
 }
 
-export async function findReturningGuest(mac: string, settings: SystemSettings): Promise<ReturningGuest | null> {
+/**
+ * `currentTermsHash`: se os termos mudaram desde o último aceite, o guest
+ * precisa passar pelo formulário e aceitar a nova versão (LGPD).
+ */
+export async function findReturningGuest(
+  mac: string,
+  settings: SystemSettings,
+  currentTermsHash?: string | null,
+): Promise<ReturningGuest | null> {
   if (!rememberEnabled(settings)) return null;
   const since = new Date(Date.now() - settings.rememberDeviceDays * 24 * 60 * 60 * 1000);
   const last = await prisma.guestRegistration.findFirst({
@@ -32,10 +44,24 @@ export async function findReturningGuest(mac: string, settings: SystemSettings):
       documentType: true,
       document: true,
       revokedAt: true,
+      anonymizedAt: true,
+      termsHash: true,
+      marketingConsent: true,
     },
   });
-  if (!last || last.revokedAt) return null;
-  const { revokedAt: _revoked, ...identity } = last;
-  void _revoked;
-  return { firstName: identity.fullName.split(/\s+/)[0] ?? "", identity };
+  if (!last || last.revokedAt || last.anonymizedAt) return null;
+  if (currentTermsHash && last.termsHash && last.termsHash !== currentTermsHash) return null;
+  const identity: GuestIdentity = {
+    fullName: last.fullName,
+    email: last.email,
+    phone: last.phone,
+    cpf: last.cpf,
+    documentType: last.documentType,
+    document: last.document,
+  };
+  return {
+    firstName: identity.fullName.split(/\s+/)[0] ?? "",
+    identity,
+    consent: { termsHash: last.termsHash ?? currentTermsHash ?? null, marketing: last.marketingConsent },
+  };
 }

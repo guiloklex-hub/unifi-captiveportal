@@ -11,6 +11,7 @@ import {
   Users,
   ScrollText,
   UserCircle,
+  Lock,
 } from "lucide-react";
 import { headers } from "next/headers";
 import { getLocale, dictionaries } from "@/lib/i18n/dictionaries";
@@ -38,6 +39,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/settings", label: dict.admin.navSettings, icon: Palette },
     { href: "/admin/unifi", label: dict.admin.navUnifi, icon: Router },
     { href: "/admin/users", label: dict.admin.navUsers, icon: Users },
+    { href: "/admin/privacy", label: dict.admin.navPrivacy, icon: Lock },
     { href: "/admin/audit", label: dict.admin.navAudit, icon: ScrollText },
     { href: "/admin/account", label: dict.admin.navAccount, icon: UserCircle },
   ];
