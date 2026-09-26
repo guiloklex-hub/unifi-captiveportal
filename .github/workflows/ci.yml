@@ -4,13 +4,12 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   build:
-    name: typecheck + build
+    name: lint + typecheck + test + build
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     # Vars de runtime exigidas para validar que a app sobe na build do Next e
     # para o postinstall `prisma generate` resolver `prisma.config.ts`. Valores
@@ -34,8 +33,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Lint
+        run: npm run lint
+
       - name: Typecheck
         run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Migrations apply cleanly
+        run: npx prisma migrate deploy
 
       - name: Build
         run: npm run build

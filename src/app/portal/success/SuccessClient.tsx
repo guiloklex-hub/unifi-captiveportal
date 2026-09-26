@@ -70,8 +70,8 @@ function SuccessInner({ dict }: { dict: Dictionary }) {
   }, [target]);
 
   return (
-    <main className="flex min-h-[100dvh] flex-col items-center justify-center bg-gradient-to-br from-emerald-50 to-emerald-100 p-6 text-center">
-      <div className="rounded-2xl border bg-white p-8 shadow-sm w-full max-w-md">
+    <main className="flex min-h-dvh flex-col items-center justify-center bg-linear-to-br from-emerald-50 to-emerald-100 p-6 text-center">
+      <div className="rounded-2xl border bg-white p-8 shadow-xs w-full max-w-md">
         <h1 className="text-2xl font-bold text-emerald-700">{dict.portal.successTitle}</h1>
         <p className="mt-2 text-muted-foreground">{dict.portal.successDesc}</p>
 

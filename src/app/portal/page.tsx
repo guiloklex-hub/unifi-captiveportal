@@ -20,11 +20,11 @@ export default async function PortalPage() {
 
   return (
     <main 
-      className="relative flex min-h-[100dvh] flex-col items-center justify-center bg-slate-50 p-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)]"
+      className="relative flex min-h-dvh flex-col items-center justify-center bg-slate-50 p-4 pt-[max(env(safe-area-inset-top),1rem)] pb-[max(env(safe-area-inset-bottom),1rem)]"
       style={bgStyle}
     >
       {settings.backgroundUrl && (
-        <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-black/30 backdrop-blur-xs" />
       )}
       <div className="relative z-10 w-full max-w-md">
         <Suspense fallback={<div>{dict.admin.loading}</div>}>

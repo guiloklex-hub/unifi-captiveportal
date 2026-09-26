@@ -1,13 +1,13 @@
 // Serviço para comunicação com a API do AdGuard Home.
 
 export interface AdGuardLogEntry {
-  answer: any[];
+  answer: unknown[];
   client: string;
   client_id: string;
   client_info: {
     name: string;
     ip: string;
-    whois: any;
+    whois: unknown;
   };
   cp: string;
   elapsedMs: string;

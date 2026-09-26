@@ -96,7 +96,7 @@ export function ActivityDialog({ ip, name, dict }: ActivityDialogProps) {
             </div>
           ) : (
             <Table>
-              <TableHeader className="sticky top-0 bg-background shadow-sm">
+              <TableHeader className="sticky top-0 bg-background shadow-xs">
                 <TableRow>
                   <TableHead>{dict.admin.tableDomain}</TableHead>
                   <TableHead className="w-[120px]">{dict.admin.tableStatus}</TableHead>

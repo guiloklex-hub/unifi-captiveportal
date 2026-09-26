@@ -55,9 +55,7 @@ export const getGuestRegistrationSchema = (
       .transform(onlyDigits)
       .refine(isValidBrazilCell, dict.valPhoneInvalid),
     cpf: z.string().transform(onlyDigits).refine(isValidCPF, dict.valCpfInvalid),
-    acceptTerms: z.literal(true, {
-      errorMap: () => ({ message: dict.valTermsRequired }),
-    }),
+    acceptTerms: z.literal(true, { error: dict.valTermsRequired }),
     mac: z
       .string()
       .trim()

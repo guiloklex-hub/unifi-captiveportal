@@ -165,7 +165,7 @@ export function LogsTable({ dict }: { dict: Dictionary }) {
             </div>
           ) : (
             data.rows.map((r) => (
-              <div key={r.id} className="border rounded-md p-4 space-y-3 bg-white shadow-sm">
+              <div key={r.id} className="border rounded-md p-4 space-y-3 bg-white shadow-xs">
                 <div className="flex justify-between items-start">
                   <div>
                     <div className="font-semibold text-slate-900">{r.fullName}</div>
