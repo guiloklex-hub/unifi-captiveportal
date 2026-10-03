@@ -42,7 +42,8 @@ export function LoginForm({
           setMfaToken(null);
           setCode("");
         }
-        setError(data?.error ?? "Credenciais inválidas");
+        // Sem corpo de erro e status 5xx = falha do servidor, não senha errada.
+        setError(data?.error ?? (res.status >= 500 ? "Erro no servidor. Verifique os logs." : "Credenciais inválidas"));
         return;
       }
       if (data?.mfaRequired) {

@@ -13,6 +13,7 @@ const RATE_LIMIT_WINDOW_MS = 60_000;
 
 // Resposta única para senha errada / rate-limit — não vaza qual ocorreu.
 const INVALID = { error: "Credenciais inválidas" } as const;
+const SERVER_ERROR = { error: "Erro no servidor ao entrar. Verifique os logs do servidor." } as const;
 
 export async function POST(req: NextRequest) {
   const ip = clientIp(req.headers);
@@ -31,7 +32,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const result = await passwordLogin(username, password);
+  let result: Awaited<ReturnType<typeof passwordLogin>>;
+  try {
+    result = await passwordLogin(username, password);
+  } catch (err) {
+    // Configuração quebrada (ex.: ADMIN_SECRET curto, banco sem tabelas) — antes
+    // virava 500 sem corpo e a tela mostrava "Credenciais inválidas".
+    logger.error({ err, ip }, "admin login error");
+    return NextResponse.json(SERVER_ERROR, { status: 500 });
+  }
   if (result.status === "invalid") {
     logger.info({ ip, username }, "admin login failed");
     await audit(req, "login.failed", username || "admin", undefined, username || "admin");
