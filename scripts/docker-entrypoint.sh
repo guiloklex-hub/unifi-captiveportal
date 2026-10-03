@@ -13,4 +13,5 @@ echo "[entrypoint] aplicando migrações do banco…"
 (cd /opt/prisma && node node_modules/prisma/build/index.js migrate deploy)
 
 echo "[entrypoint] iniciando na porta ${PORT:-3000}"
-exec node server.js
+# client-ip.cjs: IP real do cliente (ignora X-Real-IP/X-Forwarded-For forjados).
+exec node --require ./scripts/client-ip.cjs server.js

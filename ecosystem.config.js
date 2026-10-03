@@ -18,6 +18,8 @@ module.exports = {
       log_date_format: "YYYY-MM-DD HH:mm:ss Z",
       env: {
         NODE_ENV: "production",
+        // IP real do cliente (ver scripts/client-ip.cjs).
+        NODE_OPTIONS: "--require ./scripts/client-ip.cjs",
       },
     },
   ],

@@ -3,6 +3,8 @@ import { ADMIN_COOKIE } from "@/lib/auth";
 import { getAdminSession } from "@/lib/admin/session";
 import { requiredRole, roleAllows } from "@/lib/admin/rbac";
 import { ACTOR_HEADER, ROLE_HEADER } from "@/lib/admin/audit";
+import { adminNetworkAllowed } from "@/lib/adminNetworks";
+import { clientIp } from "@/lib/rateLimit";
 
 // Allowlist de endpoints públicos cobertos pelo matcher.
 // Why: login/logout não podem exigir sessão válida (login a cria, logout a destrói).
@@ -17,6 +19,9 @@ const PUBLIC_PATHS = new Set([
 // Métodos que mudam estado — passam por checagem de Origin/Referer para
 // defesa contra CSRF cross-site. GET/HEAD/OPTIONS são considerados safe.
 const STATE_CHANGING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+
+// Únicas rotas que o Bearer CRON_SECRET destrava — antes valia para todo o painel.
+const CRON_PATHS = new Set(["/api/admin/cleanup", "/api/admin/reports/send"]);
 
 function isApi(pathname: string): boolean {
   return pathname.startsWith("/api/");
@@ -65,10 +70,15 @@ export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const method = req.method.toUpperCase();
 
+  // Fora de ADMIN_ALLOWED_NETWORKS o painel "não existe" (ex.: rede de convidados).
+  if (!adminNetworkAllowed(clientIp(req.headers))) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   // Bypass por Bearer ${CRON_SECRET} para chamadas internas (cron jobs locais).
   // Why: tarefas de manutenção precisam rodar sem cookie de admin e sem Origin.
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && cronSecret.length >= 16) {
+  if (cronSecret && cronSecret.length >= 16 && method === "POST" && CRON_PATHS.has(pathname)) {
     const auth = req.headers.get("authorization") ?? "";
     if (timingSafeStringEqual(auth, `Bearer ${cronSecret}`)) {
       return withIdentity(req, "cron", "admin");

@@ -65,7 +65,7 @@ COPY --from=build --chown=node:node /app/.next/static ./.next/static
 COPY --from=build --chown=node:node /app/public ./public
 COPY --from=build --chown=node:node /app/src/build-info.json ./src/build-info.json
 COPY --from=prisma-cli --chown=node:node /opt/prisma /opt/prisma
-COPY --chown=node:node scripts/docker-entrypoint.sh scripts/docker-preflight.mts ./scripts/
+COPY --chown=node:node scripts/docker-entrypoint.sh scripts/docker-preflight.mts scripts/client-ip.cjs ./scripts/
 RUN mkdir -p /data && chown node:node /data
 
 USER node

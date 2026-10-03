@@ -1,13 +1,21 @@
 import { prisma } from "../prisma";
 import { decryptSecret } from "../crypto";
 import { LEGACY_UID, checkAdminPassword, createSessionToken } from "../auth";
-import { verifyPassword } from "./password";
+import { hashPassword, verifyPassword } from "./password";
 import { verifyTotp } from "./totp";
 import { legacyLoginAllowed } from "./session";
 import type { AdminRole } from "./rbac";
 
 export const MAX_FAILED_LOGINS = 5;
 export const LOCKOUT_MS = 15 * 60 * 1000;
+
+// Hash de fachada: usuário inexistente também paga um scrypt, para o tempo de
+// resposta não revelar quais nomes de usuário existem.
+let dummyHash: Promise<string> | null = null;
+async function burnPasswordCheck(password: string): Promise<void> {
+  dummyHash ??= hashPassword("usuario-inexistente");
+  await verifyPassword(password, await dummyHash);
+}
 
 export type LoginResult =
   | { status: "ok"; token: string; username: string }
@@ -30,6 +38,7 @@ export async function passwordLogin(username: string, password: string): Promise
         return { status: "ok", token, username: "admin" };
       }
     }
+    await burnPasswordCheck(password);
     return { status: "invalid" };
   }
 

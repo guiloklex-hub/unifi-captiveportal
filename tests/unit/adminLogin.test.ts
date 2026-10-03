@@ -52,6 +52,8 @@ beforeEach(() => {
   invalidateAdminSessions();
   process.env.ADMIN_PASSWORD = "senha-legada";
   delete process.env.ADMIN_BREAK_GLASS;
+  delete process.env.ADMIN_ALLOWED_NETWORKS;
+  delete process.env.CRON_SECRET;
 });
 
 describe("login legado (bootstrap)", () => {
@@ -170,5 +172,65 @@ describe("proxy com RBAC", () => {
       headers: { host: "portal.local", origin: "http://evil.com", cookie: `${ADMIN_COOKIE}=${admin}` },
     });
     expect((await proxy(bad)).status).toBe(403);
+  });
+});
+
+describe("ADMIN_ALLOWED_NETWORKS", () => {
+  const from = (ip: string, path = "/admin/login") =>
+    new NextRequest(`http://portal.local${path}`, { headers: { host: "portal.local", "x-forwarded-for": ip } });
+
+  it("vazio: painel acessível de qualquer rede", async () => {
+    expect((await proxy(from("192.168.0.50"))).status).toBe(200);
+  });
+
+  it("fora das redes: 404 em páginas e APIs, inclusive a tela de login", async () => {
+    process.env.ADMIN_ALLOWED_NETWORKS = "10.35.10.0/24, 10.35.48.2";
+    expect((await proxy(from("192.168.0.50"))).status).toBe(404);
+    expect((await proxy(from("192.168.0.50", "/api/admin/login"))).status).toBe(404);
+    expect((await proxy(from("10.35.10.20"))).status).toBe(200);
+    expect((await proxy(from("10.35.48.2"))).status).toBe(200);
+    expect((await proxy(from("10.35.48.3"))).status).toBe(404);
+    // Loopback sempre liberado (cron local); IPv4 mapeado em IPv6 é normalizado.
+    expect((await proxy(from("127.0.0.1"))).status).toBe(200);
+    expect((await proxy(from("::ffff:10.35.10.20"))).status).toBe(200);
+  });
+
+  it("entrada inválida é recusada com mensagem clara", async () => {
+    const { parseNetworks } = await import("@/lib/adminNetworks");
+    expect(() => parseNetworks("10.0.0.0/33")).toThrow(/ADMIN_ALLOWED_NETWORKS/);
+    expect(() => parseNetworks("rede-interna")).toThrow(/rede-interna/);
+  });
+});
+
+describe("CRON_SECRET", () => {
+  const SECRET = "c".repeat(32);
+  const cron = (path: string, method = "POST") =>
+    new NextRequest(`http://portal.local${path}`, {
+      method,
+      headers: { host: "portal.local", authorization: `Bearer ${SECRET}` },
+    });
+
+  it("vale só para limpeza e relatório — não abre o resto do painel", async () => {
+    process.env.CRON_SECRET = SECRET;
+    expect((await proxy(cron("/api/admin/cleanup"))).status).toBe(200);
+    expect((await proxy(cron("/api/admin/reports/send"))).status).toBe(200);
+    expect((await proxy(cron("/api/admin/users", "GET"))).status).toBe(401);
+    // Sem Origin e sem sessão: o CSRF barra antes.
+    expect((await proxy(cron("/api/admin/users"))).status).toBe(403);
+  });
+});
+
+describe("tempo de resposta do login", () => {
+  it("usuário inexistente também paga o scrypt (não revela quais usuários existem)", async () => {
+    await addUser({ username: "maria", password: "Senha12345x" });
+    await passwordLogin("ninguem", "x"); // aquece o hash de fachada
+    const time = async (u: string) => {
+      const t = performance.now();
+      for (let i = 0; i < 3; i++) await passwordLogin(u, "senha-errada");
+      return performance.now() - t;
+    };
+    const existing = await time("maria");
+    const missing = await time("ninguem");
+    expect(missing).toBeGreaterThan(existing * 0.5);
   });
 });

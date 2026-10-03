@@ -4,7 +4,9 @@ Colocar o portal atrás de um nginx é o arranjo recomendado em produção:
 
 - **IP real do cliente** (`X-Real-IP`): rate limit, logs e a descoberta do MAC por IP
   (acesso via QR code / portal aberto sem MAC) dependem dele. Sem proxy, o IP é
-  parcialmente falsificável (ver README §15.4).
+  falsificável. Com nginx **no mesmo host**, nada a configurar (loopback é confiável);
+  com nginx na frente de um container Docker, defina `TRUST_PROXY` com o IP do
+  gateway da rede Docker (ver README §15.4).
 - **HTTPS no painel** (cookie de sessão `Secure`).
 - **Login social** (Google/Microsoft) exige `PUBLIC_PORTAL_URL` em HTTPS.
 

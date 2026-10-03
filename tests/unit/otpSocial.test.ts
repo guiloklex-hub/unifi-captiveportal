@@ -28,12 +28,19 @@ const prismaMock = {
       return { count: 1 };
     }),
     findUnique: vi.fn(async ({ where }: { where: { id: string } }) => otpRows.get(where.id) ?? null),
-    findFirst: vi.fn(async ({ where }: { where: { mac: string } }) => {
-      const rows = [...otpRows.values()].filter((r) => r.mac === where.mac);
+    findFirst: vi.fn(async ({ where }: { where: { OR: { mac?: string; destination?: string }[] } }) => {
+      const rows = [...otpRows.values()].filter((r) =>
+        where.OR.some((c) => (c.mac !== undefined && r.mac === c.mac) || (c.destination !== undefined && r.destination === c.destination)),
+      );
       return rows.sort((a, b) => (b.createdAt as Date).getTime() - (a.createdAt as Date).getTime())[0] ?? null;
     }),
-    count: vi.fn(async ({ where }: { where: { mac: string; preAuth: boolean } }) =>
-      [...otpRows.values()].filter((r) => r.mac === where.mac && r.preAuth === where.preAuth).length,
+    count: vi.fn(async ({ where }: { where: { mac?: string; preAuth?: boolean; destination?: string } }) =>
+      [...otpRows.values()].filter(
+        (r) =>
+          (where.mac === undefined || r.mac === where.mac) &&
+          (where.preAuth === undefined || r.preAuth === where.preAuth) &&
+          (where.destination === undefined || r.destination === where.destination),
+      ).length,
     ),
     delete: vi.fn(async ({ where }: { where: { id: string } }) => otpRows.delete(where.id)),
   },
@@ -180,6 +187,28 @@ describe("fluxo de verificação por e-mail", () => {
     const res = await otpStart.POST(post(form));
     expect(res.status).toBe(429);
     expect(sendSms).toHaveBeenCalledTimes(1);
+  });
+
+  it("trocar o MAC não burla o intervalo de reenvio para o mesmo telefone", async () => {
+    settingsRef.current = { verificationMode: "sms" };
+    await otpStart.POST(post(form));
+    const res = await otpStart.POST(post({ ...form, mac: "02:00:00:00:00:01" }));
+    expect(res.status).toBe(429);
+    expect(sendSms).toHaveBeenCalledTimes(1);
+  });
+
+  it("no máximo 5 códigos por destinatário em 24 h, mesmo com MACs diferentes", async () => {
+    settingsRef.current = { verificationMode: "sms" };
+    const anHourAgo = () => new Date(Date.now() - 60 * 60 * 1000);
+    for (let i = 0; i < otp.OTP_MAX_PER_DESTINATION_PER_DAY; i++) {
+      const res = await otpStart.POST(post({ ...form, mac: `02:00:00:00:00:1${i}` }));
+      expect(res.status).toBe(200);
+      // Envelhece os desafios para sair do intervalo de reenvio, mas dentro das 24 h.
+      for (const row of otpRows.values()) row.createdAt = anHourAgo();
+    }
+    const res = await otpStart.POST(post({ ...form, mac: "02:00:00:00:00:99" }));
+    expect(res.status).toBe(429);
+    expect(sendSms).toHaveBeenCalledTimes(otp.OTP_MAX_PER_DESTINATION_PER_DAY);
   });
 
   it("falha no envio devolve 502 e não deixa desafio pendurado", async () => {

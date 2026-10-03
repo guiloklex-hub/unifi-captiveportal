@@ -371,7 +371,10 @@ Todas ficam no arquivo `.env`.
 | `ADMIN_PASSWORD` | Sim* | Senha de **primeiro acesso** ao painel (antes de existir usuários) | `SenhaForte@2026` |
 | `ADMIN_BREAK_GLASS` | Não | `true` reabre o login por `ADMIN_PASSWORD` mesmo com usuários cadastrados (emergência — ex.: único admin perdeu o 2FA). Deixe desligado | `false` |
 | `ADMIN_SECRET` | Sim | Segredo HMAC para sessão (mín. **32 chars** — app não inicia abaixo disso) | *(gerar)* |
-| `CRON_SECRET` | Não | Bearer token para chamadas internas/cron a `/api/admin/*` (gere com `openssl rand -hex 32`). Vazio ou < 16 chars desabilita o bypass. | *(string hex 32+ chars)* |
+| `CRON_SECRET` | Não | Bearer token do cron para `POST /api/admin/cleanup` e `POST /api/admin/reports/send` (só essas rotas). Gere com `openssl rand -hex 32`; vazio ou < 16 chars desabilita. | *(string hex 32+ chars)* |
+| `ADMIN_ALLOWED_NETWORKS` | Recomendado | IPs/CIDRs de onde o painel (`/admin`, `/api/admin`) pode ser acessado; fora deles, 404. Loopback sempre liberado. Vazio = sem restrição. Ver **15.6** | `10.35.10.0/24,10.35.48.0/24` |
+| `TRUST_PROXY` | Não | Em quem confiar para `X-Real-IP`/`X-Forwarded-For`. Vazio = só loopback (nginx no mesmo host); `true` = qualquer; `false` = nunca; ou lista de IPs/CIDRs. Ver **15.4** | `172.17.0.1` |
+| `LOG_LEVEL` | Não | Nível de log (`debug`, `info`, `warn`, `error`, `silent`). Padrão `info` em produção | `info` |
 | `GUEST_RETENTION_DAYS` | Não | Retenção dos `GuestRegistration` em dias (mínimo 7, default 365 — Marco Civil) | `365` |
 | `PII_RETENTION_DAYS` | Não | Anonimiza nome/e-mail/telefone/documentos após N dias, mantendo o registro de conexão até `GUEST_RETENTION_DAYS`. Vazio = desligado | `90` |
 | `COOKIE_SECURE` | Não | `true` somente com HTTPS | `false` |
@@ -599,7 +602,7 @@ O dashboard ganhou o gráfico **Formas de acesso** e passa a contar visitantes �
 ### 8.2 Verificação por código e login social (opcionais)
 
 **Código de verificação** (Customização → Verificação e login social):
-- **Por e-mail** ou **por SMS**: ao enviar o formulário, o convidado recebe um código de 6 dígitos (válido por 10 min, até 5 tentativas, reenvio após 45 s). Só depois de digitar o código o acesso é liberado — a autorização direta passa a ser recusada.
+- **Por e-mail** ou **por SMS**: ao enviar o formulário, o convidado recebe um código de 6 dígitos (válido por 10 min, até 5 tentativas, reenvio após 45 s por dispositivo **e** por destinatário, no máximo 5 códigos por telefone/e-mail a cada 24 h — evita disparo em massa contra uma vítima). Só depois de digitar o código o acesso é liberado — a autorização direta passa a ser recusada.
 - **E-mail**: como o convidado ainda não tem internet, o portal libera um **acesso provisório** (padrão 10 min, banda reduzida, no máximo 2 por dispositivo/dia) para ele abrir a caixa de entrada. Configure SMTP no `.env` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`).
 - **SMS**: `SMS_PROVIDER=twilio` (`TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`) ou `SMS_PROVIDER=webhook` (`SMS_WEBHOOK_URL` recebe `POST {"to":"+55…","message":"…"}`, com `SMS_WEBHOOK_TOKEN` opcional como Bearer) — o webhook permite usar qualquer gateway (Zenvia, Infobip, AWS SNS, WhatsApp via n8n/Make…).
 - O código nunca é gravado (só um HMAC dele) e vale uma única vez.
@@ -785,7 +788,7 @@ Recursos do cliente em [src/lib/unifi/](src/lib/unifi/):
 
 | Endpoint | Método | Descrição |
 |---|---|---|
-| `/api/healthz` | GET | Status agregado (UniFi, DB, disco, versão). 200 = ok/degraded; 503 = DB ou disco caído. |
+| `/api/healthz` | GET | Status agregado. 200 = ok/degraded; 503 = DB ou disco caído. Detalhes (UniFi, DB, disco, versão) só para o próprio servidor ou `ADMIN_ALLOWED_NETWORKS`. |
 
 ---
 
@@ -888,23 +891,32 @@ npx prisma studio    # abre UI em http://localhost:5555
 
 ### 15.2 Chamadas internas autenticadas (cron / scripts)
 
-Para disparar uma rota admin a partir de cron ou script local, use o `CRON_SECRET`:
+Para as tarefas agendadas, use o `CRON_SECRET`. Ele é aceito **só** em `POST /api/admin/cleanup` e `POST /api/admin/reports/send`; as demais rotas do painel exigem sessão.
 
 ```bash
 curl -X POST \
   -H "Authorization: Bearer $CRON_SECRET" \
-  http://127.0.0.1/api/admin/<rota>
+  http://127.0.0.1/api/admin/cleanup
 ```
 
 > Gere o segredo com `openssl rand -hex 32` e coloque em `.env` como `CRON_SECRET=...`. Caso o valor esteja vazio ou tenha menos de 16 caracteres, o bypass fica desabilitado e a única forma de chamar a API admin é com cookie de sessão.
 
 ### 15.3 Defesa CSRF (validação de Origin)
 
-Requisições `POST`/`PUT`/`PATCH`/`DELETE` em `/api/admin/*` exigem que **Origin** ou **Referer** do request bata com o host servido. Falhar a checagem retorna `403 Origem inválida`. Bypass por Bearer (`CRON_SECRET`) ignora essa verificação para scripts internos.
+Requisições `POST`/`PUT`/`PATCH`/`DELETE` em `/api/admin/*` exigem que **Origin** ou **Referer** do request bata com o host servido. Falhar a checagem retorna `403 Origem inválida`. Bypass por Bearer (`CRON_SECRET`) ignora essa verificação, mas **só** em `POST /api/admin/cleanup` e `POST /api/admin/reports/send` — o token não abre o restante do painel.
 
 ### 15.4 Identificação do IP do cliente
 
-O sistema lê o IP em ordem de confiança: `CF-Connecting-IP` (Cloudflare) → `X-Real-IP` (proxy reverso) → **último** hop de `X-Forwarded-For`. Em produção, **rode atrás de um proxy reverso confiável** (nginx, Cloudflare) que injete um desses headers — caso contrário o IP usado em rate-limit e logs é parcialmente spoofável.
+O IP do cliente alimenta rate limit, logs de conexão (Marco Civil), a busca do MAC por IP e `ADMIN_ALLOWED_NETWORKS`. Por isso ele **não** é lido de cabeçalhos enviados por qualquer um: `scripts/client-ip.cjs`, carregado antes do servidor (entrypoint do Docker e `NODE_OPTIONS` no `ecosystem.config.js`), descarta `X-Forwarded-For`, `X-Real-IP` e `CF-Connecting-IP` quando a conexão **não** vem de um proxy confiável e usa o endereço real do socket.
+
+| Instalação | `TRUST_PROXY` |
+|---|---|
+| Docker exposto direto na porta 80 | vazio (padrão) |
+| PM2 + nginx **no mesmo host** | vazio (loopback já é confiável) |
+| nginx no host → container Docker | IP do gateway da rede Docker (ex.: `172.17.0.1`) |
+| Atrás de Cloudflare/balanceador | IPs/CIDRs do proxy, ou `true` se só ele alcança o portal |
+
+Atrás de um proxy confiável vale a ordem `CF-Connecting-IP` → `X-Real-IP` → último hop de `X-Forwarded-For`.
 
 ### 15.5 TLS UniFi (certificado self-signed)
 
@@ -913,7 +925,17 @@ Controladoras UniFi em LAN normalmente apresentam certificado self-signed. Há d
 1. **`UNIFI_INSECURE_TLS="true"`** (atual): desabilita a verificação do certificado. Aceitável apenas em segmento de rede confiável; o servidor fica vulnerável a MITM por quem comprometer a LAN entre o portal e o controlador.
 2. **Confiar no CA da UniFi** (recomendado em produção): copie o certificado raiz da controladora para um arquivo PEM e aponte `NODE_EXTRA_CA_CERTS=/caminho/unifi-ca.pem` no `.env`. Deixe `UNIFI_INSECURE_TLS="false"`. O Node passa a aceitar **só** esse CA self-signed, e MITM volta a ser detectável.
 
-### 15.6 Limites de entrada e validação de URL
+### 15.6 Painel fora da rede de convidados (`ADMIN_ALLOWED_NETWORKS`)
+
+Com portal externo, a UniFi libera o IP do portal para convidados **ainda não autenticados** — e o painel está no mesmo IP e porta. Não há como bloquear só `/admin` na UniFi sem quebrar o portal. Defina as redes administrativas:
+
+```env
+ADMIN_ALLOWED_NETWORKS="10.35.10.0/24,10.35.48.0/24"
+```
+
+Fora delas, `/admin` e `/api/admin` respondem **404** (nem a tela de login aparece). Loopback é sempre permitido (cron local, túnel SSH). No Docker, quem abre `http://localhost` no próprio servidor chega com o IP do gateway da rede Docker (ex.: `172.17.0.1`) — inclua-o na lista se quiser usar o painel por ali, ou acesse pelo IP da LAN. O `/api/healthz` também só mostra detalhes (versão, disco, UniFi) para essas redes. Depende do IP real (15.4).
+
+### 15.7 Limites de entrada e validação de URL
 
 - Nomes (`brandName`): até **120 caracteres**.
 - Termos de uso: até **8000 caracteres**.

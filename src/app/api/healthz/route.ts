@@ -1,9 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import { statfs } from "node:fs/promises";
 import path from "node:path";
 import { checkUnifiHealth } from "@/lib/unifi";
 import { prisma } from "@/lib/prisma";
 import { getBuildInfo } from "@/lib/buildInfo";
+import { isInternalRequest } from "@/lib/adminNetworks";
+import { clientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,7 +34,7 @@ async function checkDisk() {
   }
 }
 
-export async function GET() {
+export async function GET(req: NextRequest) {
   const startedAt = new Date().toISOString();
 
   const [unifi, db, disk] = await Promise.allSettled([
@@ -63,6 +65,12 @@ export async function GET() {
   // 200 quando ok/degraded; 503 só em down de subsistema crítico (DB/disco).
   // UniFi down não derruba o serviço — guests novos falham mas painel/UI vive.
   const httpStatus = dbResult === "down" || diskResult.status === "down" ? 503 : 200;
+
+  // Público (inclusive a rede de convidados) só vê o status; versão, disco e
+  // estado da UniFi ficam para o próprio servidor e ADMIN_ALLOWED_NETWORKS.
+  if (!isInternalRequest(clientIp(req.headers))) {
+    return NextResponse.json({ status: overall, checkedAt: startedAt }, { status: httpStatus });
+  }
 
   return NextResponse.json(
     {

@@ -7,6 +7,12 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=(), payment=()" },
+  // CSP mínima que não depende de nonce: impede embutir o portal, plugins,
+  // <base> injetado e formulários enviados para outros domínios.
+  {
+    key: "Content-Security-Policy",
+    value: "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'",
+  },
 ];
 
 /** @type {import('next').NextConfig} */
