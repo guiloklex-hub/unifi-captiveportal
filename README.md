@@ -21,7 +21,8 @@ Portal para convidados (**External Portal Server**) da **Ubiquiti UniFi**, com p
 
 ```bash
 git clone https://github.com/guiloklex-hub/unifi-captiveportal && cd unifi-captiveportal
-cp .env.example .env            # edite UNIFI_URL, UNIFI_API_KEY ou UNIFI_USERNAME/PASSWORD, ADMIN_PASSWORD, ADMIN_SECRET
+cp .env.example .env            # edite UNIFI_URL, UNIFI_API_KEY ou UNIFI_USERNAME/PASSWORD, ADMIN_PASSWORD
+sed -i "s|^ADMIN_SECRET=.*|ADMIN_SECRET=\"$(openssl rand -hex 32)\"|" .env   # obrigatório
 docker compose up -d --build    # portal em http://IP_DO_SERVIDOR/ (porta 80)
 ```
 
@@ -94,6 +95,23 @@ docker compose logs -f portal     # acompanhar
 - Atualizar: `git pull && docker compose up -d --build`.
 - Backup: `docker compose exec portal sh -c 'cp /data/portal.db /data/backup-$(date +%F).db'` ou copie o volume.
 - Atrás de proxy corporativo com CA própria: `docker build --secret id=ca,src=ca.pem .`
+- **Mudou o `.env`?** Rode `docker compose up -d` (recria o container). `docker compose restart` **não** relê o `.env`.
+
+**Antes de subir, o container valida o `.env`** (`scripts/docker-preflight.mts`) e mostra o resultado em `docker compose logs portal`:
+
+| Situação | O que acontece |
+|---|---|
+| `ADMIN_SECRET` vazio, de exemplo ou com menos de 32 caracteres | O container **não sobe** e o log diz como gerar (`openssl rand -hex 32`). |
+| Valores entre aspas com `docker run --env-file` (que, diferente do Compose, não remove aspas) | As aspas são removidas, com aviso. |
+| `DATABASE_URL` relativo (o do `.env.example`) | Usa `file:/data/portal.db` (volume), com aviso. |
+
+Senha com `$`: no Compose, `$abc` é interpretado como variável — use aspas simples (`ADMIN_PASSWORD='Senha$abc'`).
+
+**Login do painel recusado?** O primeiro acesso é com o campo **Usuário** vazio (ou `admin`) e a senha de `ADMIN_PASSWORD`; depois que existir um usuário cadastrado, `ADMIN_PASSWORD` deixa de valer (salvo `ADMIN_BREAK_GLASS="true"`). Cinco tentativas erradas em 1 minuto bloqueiam o login por 1 minuto, com a mesma mensagem de credenciais inválidas.
+
+**Convidado conecta mas fica "sem internet" e o portal não abre** (controladora UniFi):
+- A rede de convidados precisa de um DNS **alcançável antes do login** (ex.: `1.1.1.1`); um DNS interno em `10.x`/`192.168.x` costuma estar bloqueado pela política de convidados.
+- Em **Pre-Authorization Access**, libere o **IP da controladora** quando ela não for o próprio gateway (ex.: USG + Cloud Key): o convidado passa primeiro pela controladora antes de ser enviado ao portal externo. O IP configurado como *External Portal Server* costuma ser liberado automaticamente pela UniFi.
 
 As seções 1–3 abaixo descrevem a instalação tradicional com Node + PM2.
 

@@ -72,6 +72,11 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
 ### Corrigido
+- **Docker — login do painel recusava a senha certa** ("Credenciais inválidas"): com o `ADMIN_SECRET` de
+  exemplo (28 caracteres) ou com `docker run --env-file` (aspas mantidas e `DATABASE_URL` relativo apontando
+  para um banco vazio), a rota de login dava 500 sem corpo. O entrypoint agora valida o ambiente
+  (`scripts/docker-preflight.mts`): recusa subir sem `ADMIN_SECRET` válido, remove aspas e força o banco em
+  `/data`. Erros do servidor no login passam a aparecer como tal na tela, não como senha errada.
 - Formulário do portal só mostrava os erros de campo (ex.: "CPF inválido") depois que os termos eram marcados.
 - Logo com URL externa quebrava o portal (`next/image` sem `remotePatterns`).
 - O QR code do token abria o portal sem MAC ("Acesso indisponível").

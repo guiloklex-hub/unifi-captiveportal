@@ -3,6 +3,10 @@
 # (build "standalone"). O CLI do Prisma fica isolado em /opt/prisma.
 set -e
 
+# Valida/normaliza o ambiente (aspas, DATABASE_URL, ADMIN_SECRET) — ver o script.
+preflight=$(node scripts/docker-preflight.mts) || exit 1
+eval "$preflight"
+
 mkdir -p "${UPLOAD_DIR:-/data/uploads}"
 
 echo "[entrypoint] aplicando migrações do banco…"
