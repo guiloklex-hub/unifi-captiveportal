@@ -15,6 +15,7 @@ import {
   maskDestination,
   preAuthAllowed,
   secondsUntilResend,
+  destinationQuotaExceeded,
   type OtpChannel,
 } from "@/lib/portal/otp";
 import { sendEmail } from "@/lib/messaging/email";
@@ -63,7 +64,12 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const wait = await secondsUntilResend(mac);
+  if (await destinationQuotaExceeded(destination)) {
+    logger.warn({ mac, channel }, "otp: limite diário do destino atingido");
+    return NextResponse.json({ error: dict.portal.errRateLimited }, { status: 429 });
+  }
+
+  const wait = await secondsUntilResend(mac, destination);
   if (wait > 0) {
     return NextResponse.json(
       { error: dict.portal.otpWait.replace("{s}", String(wait)), retryAfter: wait },

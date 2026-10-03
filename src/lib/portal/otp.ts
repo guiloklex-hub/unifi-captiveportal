@@ -14,6 +14,8 @@ export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 45 * 1000;
 /** Acessos provisórios (para ler o e-mail) por MAC a cada 24 h. */
 export const OTP_MAX_PREAUTH_PER_DAY = 2;
+/** Teto de códigos para o MESMO telefone/e-mail em 24h, independente do MAC. */
+export const OTP_MAX_PER_DESTINATION_PER_DAY = 5;
 
 export type OtpChannel = "email" | "sms";
 
@@ -39,15 +41,26 @@ export function maskDestination(channel: OtpChannel, dest: string): string {
   return `•••• ${digits.slice(-4)}`;
 }
 
-export async function secondsUntilResend(mac: string): Promise<number> {
+/**
+ * Intervalo mínimo entre envios, por MAC E por destino. Why: o MAC vem do
+ * cliente; só por MAC, trocar o MAC a cada pedido disparava códigos sem
+ * limite para o telefone/e-mail de uma vítima (custo de SMS).
+ */
+export async function secondsUntilResend(mac: string, destination: string): Promise<number> {
   const last = await prisma.otpChallenge.findFirst({
-    where: { mac },
+    where: { OR: [{ mac }, { destination }] },
     orderBy: { createdAt: "desc" },
     select: { createdAt: true },
   });
   if (!last) return 0;
   const wait = last.createdAt.getTime() + OTP_RESEND_COOLDOWN_MS - Date.now();
   return wait > 0 ? Math.ceil(wait / 1000) : 0;
+}
+
+export async function destinationQuotaExceeded(destination: string): Promise<boolean> {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const count = await prisma.otpChallenge.count({ where: { destination, createdAt: { gte: since } } });
+  return count >= OTP_MAX_PER_DESTINATION_PER_DAY;
 }
 
 export async function preAuthAllowed(mac: string): Promise<boolean> {

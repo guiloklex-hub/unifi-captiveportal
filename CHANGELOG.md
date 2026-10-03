@@ -71,6 +71,20 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
   por `tw-animate-css`; `autoprefixer` removido (embutido no Tailwind 4).
 - `npm audit` zerado (overrides para dependências transitivas do CLI do Prisma).
 
+### Segurança
+- **IP do cliente não é mais forjável** (`scripts/client-ip.cjs`): `X-Real-IP`/`X-Forwarded-For`/`CF-Connecting-IP`
+  só valem vindos de proxy confiável (`TRUST_PROXY`, padrão loopback). Antes, trocar o cabeçalho burlava o rate limit
+  do login (inclusive do `ADMIN_PASSWORD`, sem bloqueio por conta) e gravava IP falso nos logs de conexão.
+- **`ADMIN_ALLOWED_NETWORKS`**: o painel responde 404 fora das redes administrativas — com portal externo a UniFi
+  libera o IP do portal (e portanto o painel) para convidados ainda não autenticados.
+- **OTP**: intervalo de reenvio também por destinatário e no máximo 5 códigos por telefone/e-mail em 24 h
+  (o limite só por MAC, informado pelo cliente, permitia disparo em massa de SMS).
+- **`CRON_SECRET`** passa a valer só em `POST /api/admin/cleanup` e `/api/admin/reports/send` (antes: todo o painel).
+- Login com usuário inexistente leva o mesmo tempo (scrypt de fachada) — não revela quais usuários existem.
+- CSP mínima (`frame-ancestors`, `base-uri`, `object-src`, `form-action`); `/api/healthz` só mostra detalhes para
+  o próprio servidor e `ADMIN_ALLOWED_NETWORKS`.
+- Removidas as dependências sem uso `date-fns` e `@radix-ui/react-toast`.
+
 ### Corrigido
 - **Docker — login do painel recusava a senha certa** ("Credenciais inválidas"): com o `ADMIN_SECRET` de
   exemplo (28 caracteres) ou com `docker run --env-file` (aspas mantidas e `DATABASE_URL` relativo apontando

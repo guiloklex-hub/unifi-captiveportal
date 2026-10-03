@@ -176,6 +176,7 @@ model OtpChallenge {
   verifiedAt  DateTime?
 
   @@index([mac, createdAt])
+  @@index([destination, createdAt])
 }
 
 /// Login social (OAuth/OIDC) em andamento ou concluído.
