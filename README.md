@@ -113,6 +113,16 @@ Senha com `$`: no Compose, `$abc` é interpretado como variável — use aspas s
 - A rede de convidados precisa de um DNS **alcançável antes do login** (ex.: `1.1.1.1`); um DNS interno em `10.x`/`192.168.x` costuma estar bloqueado pela política de convidados.
 - Em **Pre-Authorization Access**, libere o **IP da controladora** quando ela não for o próprio gateway (ex.: USG + Cloud Key): o convidado passa primeiro pela controladora antes de ser enviado ao portal externo. O IP configurado como *External Portal Server* costuma ser liberado automaticamente pela UniFi.
 
+**Controladora em `172.17.x.x`–`172.31.x.x` (ou `192.168.x.x`) não responde do container** ("fetch failed", "EHOSTUNREACH" ou "tempo de conexão esgotado" em **Conexão UniFi**, mesmo funcionando pelo navegador/Postman do seu computador):
+o Docker cria suas redes internas nessas faixas (`docker0` = `172.17.0.0/16`, a do Compose costuma ser `172.18.0.0/16`). Se a controladora estiver numa delas, o servidor entrega os pacotes à bridge do Docker e eles nunca chegam à LAN. Confirme no servidor:
+
+```bash
+ip route get 172.18.1.2          # IP da controladora; se citar docker0 ou br-…, há conflito
+docker network inspect $(docker network ls -q -f name=_default) | grep Subnet
+```
+
+Corrija fixando a rede do Compose numa faixa que não exista na sua LAN — descomente o bloco `networks:` no final do `docker-compose.yml` e recrie: `docker compose down && docker compose up -d`. Se o conflito for com `docker0` (`172.17.0.0/16`) ou com outros projetos, ajuste também `/etc/docker/daemon.json` (`"bip"` e `"default-address-pools"`) e reinicie o Docker. A tela **Conexão UniFi** avisa quando detecta esse conflito.
+
 As seções 1–3 abaixo descrevem a instalação tradicional com Node + PM2.
 
 ## 1. Instalação do ambiente
@@ -831,6 +841,7 @@ npx prisma studio    # abre UI em http://localhost:5555
 | `scripts/backup.sh` falha com "sqlite3: command not found" | CLI ausente | `sudo apt install -y sqlite3` |
 | `bind EACCES 0.0.0.0:80` ao iniciar PM2 | Falta `setcap` na nova versão do Node | Refaça `sudo setcap 'cap_net_bind_service=+ep' $(which node)` (seção **1.4**) e `pm2 restart unifi-portal` |
 | "Nenhuma forma de conexão funcionou" em Conexão UniFi | URL/porta errada, certificado, credencial ou MFA na conta | Use **Testar conexão**: cada estratégia mostra o erro. Classic → `https://IP:8443` + usuário local sem MFA; UniFi OS → `https://IP` + API Key |
+| "fetch failed — EHOSTUNREACH/tempo de conexão esgotado" em Conexão UniFi, mas a controladora responde do seu computador | No Docker: IP da controladora dentro da rede interna do Docker (`172.17`–`172.31.x.x`); fora dele: firewall/rota do servidor | Seção **0** ("Controladora … não responde do container"); teste do próprio servidor com `curl -k https://IP:8443/status` |
 | Convidado vê "Serviço temporariamente indisponível" | Controladora inalcançável ou credencial inválida | `/api/healthz` e **Conexão UniFi → Testar conexão**; veja os logs |
 | Esqueci a senha / perdi o 2FA do único admin | — | Defina `ADMIN_BREAK_GLASS=true`, entre com `ADMIN_PASSWORD`, redefina em **Usuários** e volte para `false` |
 | Botões de login social não aparecem | Falta HTTPS em `PUBLIC_PORTAL_URL` ou credenciais OAuth | Seção **8.2** |

@@ -8,6 +8,7 @@ import {
   UniFiUnavailableError,
 } from "./errors";
 import { circuitState } from "./http";
+import { containerNetworkHint } from "./netDiagnostics";
 import {
   clearIntegrationCache,
   integrationAuthorizeGuest,
@@ -264,6 +265,8 @@ export type UniFiDiagnostics = {
   activeStrategy: UniFiStrategy | null;
   sites: UniFiSite[];
   circuit: { failures: number; openUntil: number | null };
+  /** Possível causa quando a controladora não respondeu (ex.: conflito com a rede do Docker). */
+  hint: string | null;
 };
 
 function describe(err: unknown): string {
@@ -342,5 +345,6 @@ export async function diagnoseUniFi(override?: UniFiConfig): Promise<UniFiDiagno
     activeStrategy,
     sites,
     circuit: circuitState(),
+    hint: cfg.url && variant === "unknown" && !activeStrategy ? containerNetworkHint(cfg.url) : null,
   };
 }

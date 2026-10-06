@@ -27,6 +27,7 @@ type Diagnostics = {
   activeStrategy: Strategy | null;
   sites: { name: string; description: string }[];
   strategies: { strategy: Strategy; configured: boolean; ok: boolean; latencyMs: number | null; error: string | null }[];
+  hint: string | null;
 };
 
 type Form = {
@@ -350,6 +351,13 @@ export default function UniFiConnectionPage() {
                     </li>
                   ))}
                 </ul>
+
+                {diag.hint && (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
+                    <div className="mb-1 font-medium">{t.unifiHint}</div>
+                    <p className="break-words">{diag.hint}</p>
+                  </div>
+                )}
 
                 {diag.sites.length > 0 && (
                   <div className="border-t pt-3">
