@@ -1,6 +1,7 @@
 import { Agent, fetch as undiciFetch } from "undici";
 import { logger } from "../logger";
 import { UniFiUnavailableError } from "./errors";
+import { networkErrorDetail } from "./netDiagnostics";
 
 /**
  * Transporte HTTP compartilhado pelas estratégias de conexão UniFi:
@@ -165,19 +166,19 @@ export async function unifiHttp(url: string, req: HttpRequest): Promise<HttpResp
     } catch (err) {
       if (!isTransient(err)) {
         if (track) recordFailure(err);
-        throw new UniFiUnavailableError(`UniFi ${path}: ${(err as Error).message}`);
+        throw new UniFiUnavailableError(`UniFi ${path}: ${networkErrorDetail(err)}`);
       }
       lastErr = err;
     }
     if (attempt < maxRetries) {
       const delay = RETRY_BASE_MS * Math.pow(3, attempt); // 500ms, 1500ms
-      logger.warn({ path, attempt: attempt + 1, delay, err: (lastErr as Error)?.message }, "UniFi retry");
+      logger.warn({ path, attempt: attempt + 1, delay, err: networkErrorDetail(lastErr) }, "UniFi retry");
       await sleep(delay);
     }
   }
 
   if (track) recordFailure(lastErr);
-  const message = lastErr instanceof Error ? lastErr.message : String(lastErr);
+  const message = networkErrorDetail(lastErr);
   logger.error({ path, err: message }, "UniFi request exhausted retries");
   throw new UniFiUnavailableError(`UniFi ${path} indisponível após ${maxRetries + 1} tentativa(s): ${message}`);
 }

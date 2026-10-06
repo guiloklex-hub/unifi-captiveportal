@@ -23,3 +23,13 @@ services:
 
 volumes:
   portal-data:
+
+# Controladora UniFi em 172.17–172.31.x.x? A rede interna que o Compose cria pode
+# usar a mesma faixa, e o container não alcança a controladora ("fetch failed",
+# EHOSTUNREACH). Fixe uma sub-rede que não exista na sua LAN e recrie:
+#   docker compose down && docker compose up -d
+# networks:
+#   default:
+#     ipam:
+#       config:
+#         - subnet: 10.254.254.0/24

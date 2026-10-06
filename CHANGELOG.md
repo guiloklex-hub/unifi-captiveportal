@@ -86,6 +86,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Removidas as dependências sem uso `date-fns` e `@radix-ui/react-toast`.
 
 ### Corrigido
+- **Conexão UniFi — "fetch failed" sem explicação**: o teste de conexão e os logs agora mostram a causa real
+  (ex.: `EHOSTUNREACH`, `ECONNREFUSED`, tempo de conexão esgotado, certificado) com uma dica. No Docker, a tela
+  avisa quando o IP da controladora cai dentro da rede interna do container (`172.17`–`172.31.x.x`), caso em que
+  ela nunca é alcançada; o `docker-compose.yml` traz o bloco para fixar outra sub-rede (README, seção 0).
 - **Docker — login do painel recusava a senha certa** ("Credenciais inválidas"): com o `ADMIN_SECRET` de
   exemplo (28 caracteres) ou com `docker run --env-file` (aspas mantidas e `DATABASE_URL` relativo apontando
   para um banco vazio), a rota de login dava 500 sem corpo. O entrypoint agora valida o ambiente
