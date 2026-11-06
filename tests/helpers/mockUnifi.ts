@@ -29,6 +29,8 @@ export class MockUnifi {
   guests = [
     { mac: "aa:bb:cc:dd:ee:ff", ip: "10.0.0.10", essid: "Guest", tx_bytes: 1000, rx_bytes: 2000, authorized: true },
   ];
+  /** Quantas listagens de clientes da API oficial omitem os guests (cliente recém-associado). */
+  hideClientsForCalls = 0;
   /** Força a próxima chamada autenticada a devolver 401 (sessão expirada). */
   expireSessionOnce = false;
   private server: Server;
@@ -116,7 +118,9 @@ export class MockUnifi {
         if (url.searchParams.has("filter") && !this.opts.integrationFilter) {
           return this.json(res, 400, { message: "filter not supported" });
         }
-        const data = this.guests.map((gst, i) => ({
+        const visible = this.hideClientsForCalls > 0 ? [] : this.guests;
+        if (this.hideClientsForCalls > 0) this.hideClientsForCalls--;
+        const data = visible.map((gst, i) => ({
           id: i === 0 ? CLIENT_ID : `other-${i}`,
           name: `guest-${i}`,
           type: "WIRELESS",

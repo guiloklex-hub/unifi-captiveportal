@@ -369,6 +369,7 @@ Todas ficam no arquivo `.env`.
 | `UNIFI_USERNAME` | Não² | Usuário admin **local** UniFi (sem MFA) | `portal-api` |
 | `UNIFI_PASSWORD` | Não² | Senha do usuário UniFi | `SenhaForte123` |
 | `UNIFI_SITE` | Não | Site UniFi padrão (nome curto) | `default` |
+| `UNIFI_CLIENT_WAIT_MS` | Não | Quanto tempo (ms) a API oficial espera o celular recém-conectado aparecer na lista de clientes antes de cair para a API legada (usuário/senha) ou recusar | `12000` |
 | `UNIFI_INSECURE_TLS` | Não | `true` aceita certificado self-signed | `true` |
 | `DATA_ENCRYPTION_KEY` | Não | Chave (32 bytes hex/base64) para cifrar segredos salvos no banco. Se ausente, derivada do `ADMIN_SECRET` | *(openssl rand -hex 32)* |
 | `UPLOAD_DIR` | Não | Diretório das imagens enviadas | `./public/uploads` |
