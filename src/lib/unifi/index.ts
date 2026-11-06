@@ -3,6 +3,7 @@ import { getUniFiConfig, hasApiKey, hasPassword, type UniFiConfig } from "./conf
 import {
   UniFiAuthError,
   UniFiClientError,
+  UniFiClientNotFoundError,
   UniFiNotConfiguredError,
   UniFiNotSupportedError,
   UniFiUnavailableError,
@@ -52,7 +53,7 @@ import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite, UniFiStrategy
  * como indisponíveis por alguns minutos para não sondar a cada request.
  */
 
-export { UniFiUnavailableError, UniFiClientError, UniFiAuthError, UniFiNotSupportedError, UniFiNotConfiguredError };
+export { UniFiUnavailableError, UniFiClientError, UniFiClientNotFoundError, UniFiAuthError, UniFiNotSupportedError, UniFiNotConfiguredError };
 export type { UniFiGuest, UniFiSite, UniFiDevice, UniFiStrategy, AuthorizeParams };
 
 const UNSUPPORTED_TTL_MS = 10 * 60 * 1000;
@@ -117,6 +118,7 @@ async function run<T>(op: Op, fn: (cfg: UniFiConfig, strategy: UniFiStrategy) =>
   const candidates = available.length > 0 ? available : all;
 
   let lastErr: unknown;
+  let notFound: UniFiClientNotFoundError | undefined;
   for (const strategy of candidates) {
     try {
       const result = await fn(cfg, strategy);
@@ -128,12 +130,21 @@ async function run<T>(op: Op, fn: (cfg: UniFiConfig, strategy: UniFiStrategy) =>
       return result;
     } catch (err) {
       lastErr = err;
+      // Cliente ainda não listado pela API oficial: a próxima estratégia (legada)
+      // autoriza direto pelo MAC. Não marca a estratégia como indisponível.
+      if (err instanceof UniFiClientNotFoundError) {
+        notFound = err;
+        logger.warn({ op, strategy, err: err.message }, "UniFi client not listed — trying next strategy");
+        continue;
+      }
       if (!isFallbackError(err)) throw err;
       st.unavailableUntil[strategy] = Date.now() + UNSUPPORTED_TTL_MS;
       logger.warn({ op, strategy, err: (err as Error).message }, "UniFi strategy unavailable — trying next");
     }
   }
-  throw lastErr;
+  // Se a falha original foi "cliente não listado", ela é a causa real — não o
+  // "não suportado" de uma estratégia de fallback.
+  throw notFound ?? lastErr;
 }
 
 // ─── API pública ────────────────────────────────────────────────────────────

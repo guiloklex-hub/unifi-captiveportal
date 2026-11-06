@@ -14,7 +14,7 @@ let mock: MockUnifi;
 async function setup(opts: MockOptions, env: Record<string, string | undefined>) {
   mock = new MockUnifi(opts);
   const url = await mock.start();
-  for (const k of ["UNIFI_USERNAME", "UNIFI_PASSWORD", "UNIFI_API_KEY", "UNIFI_AUTH_MODE", "UNIFI_SITE"]) {
+  for (const k of ["UNIFI_USERNAME", "UNIFI_PASSWORD", "UNIFI_API_KEY", "UNIFI_AUTH_MODE", "UNIFI_SITE", "UNIFI_CLIENT_WAIT_MS"]) {
     delete process.env[k];
   }
   process.env.UNIFI_URL = url;
@@ -113,6 +113,36 @@ describe("UniFi OS com API Key (API oficial)", () => {
     await unifi.unauthorizeGuest("aa:bb:cc:dd:ee:ff");
     const action = mock.callsTo("/actions")[0];
     expect(action.body).toEqual({ action: "UNAUTHORIZE_GUEST_ACCESS" });
+  });
+
+  it("espera o cliente recém-associado aparecer na API oficial", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "5000" });
+    mock.hideClientsForCalls = 2;
+    await unifi.authorizeGuest(guestParams);
+    expect(mock.callsTo("/actions")).toHaveLength(1);
+  });
+
+  it("cliente não listado vira UniFiClientNotFoundError quando não há fallback", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "0" });
+    mock.hideClientsForCalls = 100;
+    await expect(unifi.authorizeGuest(guestParams)).rejects.toBeInstanceOf(unifi.UniFiClientNotFoundError);
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+  });
+
+  it("cliente não listado na API oficial cai para a API legada por usuário/senha", async () => {
+    await setup(
+      { ...opts, username: "api", password: "pw" },
+      { UNIFI_API_KEY: "chave", UNIFI_USERNAME: "api", UNIFI_PASSWORD: "pw", UNIFI_CLIENT_WAIT_MS: "0" },
+    );
+    mock.hideClientsForCalls = 100;
+    await unifi.authorizeGuest(guestParams);
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+    const cmd = mock.callsTo("/proxy/network/api/s/default/cmd/stamgr").at(-1);
+    expect(cmd?.body).toMatchObject({ cmd: "authorize-guest", mac: "aa:bb:cc:dd:ee:ff" });
+    // A API oficial continua disponível para o próximo guest.
+    mock.hideClientsForCalls = 0;
+    await unifi.authorizeGuest(guestParams);
+    expect(mock.callsTo("/actions")).toHaveLength(1);
   });
 
   it("estatísticas preferem a API legada com API Key (tem contadores de tráfego)", async () => {

@@ -24,6 +24,18 @@ export class UniFiClientError extends Error {
   }
 }
 
+/**
+ * Cliente (MAC) não aparece na lista de clientes da controladora — típico de
+ * associação recém-feita que a API oficial ainda não publicou. A fachada tenta a
+ * próxima estratégia (API legada autoriza pelo MAC sem depender da lista).
+ */
+export class UniFiClientNotFoundError extends UniFiClientError {
+  constructor(message: string) {
+    super(404, message);
+    this.name = "UniFiClientNotFoundError";
+  }
+}
+
 /** Credenciais (usuário/senha ou API Key) recusadas pela controladora. */
 export class UniFiAuthError extends Error {
   constructor(message: string) {

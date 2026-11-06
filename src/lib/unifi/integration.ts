@@ -1,6 +1,6 @@
 import { logger } from "../logger";
 import type { UniFiConfig } from "./config";
-import { UniFiAuthError, UniFiClientError, UniFiNotSupportedError } from "./errors";
+import { UniFiAuthError, UniFiClientError, UniFiClientNotFoundError, UniFiNotSupportedError } from "./errors";
 import { unifiHttp } from "./http";
 import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite } from "./types";
 
@@ -26,6 +26,18 @@ const PREFIX_CANDIDATES = ["/proxy/network/integration", "/integration"];
 const SITE_CACHE_TTL_MS = 10 * 60 * 1000;
 const PAGE_LIMIT = 200;
 const MAX_PAGES = 25;
+/**
+ * Tempo máximo esperando o cliente recém-associado aparecer na API oficial.
+ * A controladora pode levar dezenas de segundos para listar um guest ainda não
+ * autorizado; o formulário costuma ser enviado antes disso.
+ */
+const DEFAULT_CLIENT_WAIT_MS = 12_000;
+const CLIENT_WAIT_STEPS_MS = [1_000, 2_000, 3_000];
+
+function clientWaitMs(): number {
+  const v = Number(process.env.UNIFI_CLIENT_WAIT_MS);
+  return Number.isFinite(v) && v >= 0 ? v : DEFAULT_CLIENT_WAIT_MS;
+}
 
 type IntegrationState = {
   configVersion: string;
@@ -126,8 +138,10 @@ async function listAll<T>(cfg: UniFiConfig, path: string): Promise<T[]> {
     const res = await request<Page<T>>(cfg, `${path}${sep}offset=${page * PAGE_LIMIT}&limit=${PAGE_LIMIT}`);
     const data = res?.data ?? [];
     out.push(...data);
-    const total = res?.totalCount ?? out.length;
-    if (data.length < PAGE_LIMIT || out.length >= total) break;
+    if (data.length === 0) break;
+    // Com totalCount, ele manda — a controladora pode limitar a página abaixo de
+    // PAGE_LIMIT. Sem ele, página incompleta = última página.
+    if (typeof res?.totalCount === "number" ? out.length >= res.totalCount : data.length < PAGE_LIMIT) break;
   }
   return out;
 }
@@ -196,14 +210,25 @@ async function findClientByMac(cfg: UniFiConfig, siteId: string, mac: string): P
 }
 
 async function requireClient(cfg: UniFiConfig, siteId: string, mac: string): Promise<IntegrationClient> {
-  let client = await findClientByMac(cfg, siteId, mac);
-  if (!client) {
-    // Recém-associado: a controladora pode levar um instante para listar o cliente.
-    await sleep(1_500);
-    client = await findClientByMac(cfg, siteId, mac);
+  const started = Date.now();
+  const deadline = started + clientWaitMs();
+  let attempt = 0;
+  for (;;) {
+    const client = await findClientByMac(cfg, siteId, mac);
+    if (client) {
+      if (attempt > 0) logger.info({ mac, attempts: attempt + 1, waitedMs: Date.now() - started }, "UniFi client found after waiting");
+      return client;
+    }
+    // Recém-associado: a controladora pode levar um tempo para listar o cliente.
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) break;
+    const step = CLIENT_WAIT_STEPS_MS[Math.min(attempt, CLIENT_WAIT_STEPS_MS.length - 1)];
+    await sleep(Math.min(step, remaining));
+    attempt++;
   }
-  if (!client) throw new UniFiClientError(404, `Cliente ${mac} não está conectado ao site`);
-  return client;
+  throw new UniFiClientNotFoundError(
+    `Cliente ${mac} não está conectado ao site (aguardado ${Math.round((Date.now() - started) / 1000)}s)`,
+  );
 }
 
 export async function integrationAuthorizeGuest(cfg: UniFiConfig, siteName: string, p: AuthorizeParams): Promise<void> {
