@@ -115,6 +115,19 @@ describe("UniFi OS com API Key (API oficial)", () => {
     expect(action.body).toEqual({ action: "UNAUTHORIZE_GUEST_ACCESS" });
   });
 
+  it("revogar devolve o tráfego final da autorização (revokedAuthorization.usage)", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    const usage = await unifi.unauthorizeGuest("AA:BB:CC:DD:EE:FF");
+    expect(usage).toMatchObject({ mac: "aa:bb:cc:dd:ee:ff", rx_bytes: 2000, tx_bytes: 1000, authorized: false });
+    expect(usage?.end).toBe(Date.parse("2026-09-26T11:00:05Z") / 1000);
+  });
+
+  it("revogar cliente já desconectado não chama a ação e devolve null", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    expect(await unifi.unauthorizeGuest("aa:bb:cc:dd:ee:99")).toBeNull();
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+  });
+
   it("espera o cliente recém-associado aparecer na API oficial", async () => {
     await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "5000" });
     mock.hideClientsForCalls = 2;
@@ -152,13 +165,67 @@ describe("UniFi OS com API Key (API oficial)", () => {
     expect(mock.callsTo("/proxy/network/api/s/default/stat/guest")[0].headers["x-api-key"]).toBe("chave");
   });
 
-  it("sem API legada por chave, lista guests pela API oficial (sem bytes)", async () => {
+  it("sem API legada por chave, lista guests pela API oficial com o filtro de guest (sem detalhes)", async () => {
     await setup(opts, { UNIFI_API_KEY: "chave" });
     const guests = await unifi.listActiveGuests();
     expect(guests).toEqual([
       expect.objectContaining({ mac: "aa:bb:cc:dd:ee:ff", ip: "10.0.0.10", authorized: true }),
     ]);
     expect(guests[0].tx_bytes).toBeUndefined();
+    const list = mock.callsTo(`/v1/sites/${MOCK_SITE_ID}/clients?`)[0];
+    expect(decodeURIComponent(list.path)).toContain("filter=access.type.eq('GUEST')");
+    expect(mock.callsTo(`/clients/${MOCK_CLIENT_ID}`)).toHaveLength(0);
+  });
+
+  it("com withTraffic, lê os bytes em access.authorization.usage do detalhe do cliente", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    const [g] = await unifi.listActiveGuests(null, { withTraffic: true });
+    expect(g).toMatchObject({ mac: "aa:bb:cc:dd:ee:ff", rx_bytes: 2000, tx_bytes: 1000, authorized: true });
+    expect(g.start).toBe(Date.parse("2026-09-26T10:00:05Z") / 1000);
+    expect(g.end).toBe(Date.parse("2026-09-26T11:00:05Z") / 1000);
+    expect(mock.callsTo(`/v1/sites/${MOCK_SITE_ID}/clients/${MOCK_CLIENT_ID}`)).toHaveLength(1);
+  });
+
+  it("guest não autorizado não gera consulta de detalhe", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    mock.guests[0].authorized = false;
+    const [g] = await unifi.listActiveGuests(null, { withTraffic: true });
+    expect(g.authorized).toBe(false);
+    expect(mock.callsTo(`/clients/${MOCK_CLIENT_ID}`)).toHaveLength(0);
+  });
+
+  it("detalhe 404 (guest saiu) não derruba a listagem nem tira a API oficial de uso", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    mock.guests.push({ mac: "aa:bb:cc:dd:ee:01", ip: "10.0.0.11", tx_bytes: 10, rx_bytes: 20, authorized: true });
+    mock.detailNotFound.add(MOCK_CLIENT_ID);
+    const guests = await unifi.listActiveGuests(null, { withTraffic: true });
+    expect(guests).toHaveLength(2);
+    expect(guests[0].rx_bytes).toBeUndefined();
+    expect(guests[1]).toMatchObject({ mac: "aa:bb:cc:dd:ee:01", rx_bytes: 20, tx_bytes: 10 });
+
+    mock.detailNotFound.clear();
+    const again = await unifi.listActiveGuests(null, { withTraffic: true });
+    expect(again[0].rx_bytes).toBe(2000);
+    expect(unifi.lastStatsStrategy()).toBe("integration");
+  });
+
+  it("sem suporte a filtro, varre a lista uma vez e memoriza a recusa", async () => {
+    await setup({ ...opts, integrationFilter: false }, { UNIFI_API_KEY: "chave" });
+    await unifi.listActiveGuests();
+    await unifi.listActiveGuests();
+    expect(mock.callsTo("filter=")).toHaveLength(1);
+  });
+
+  it("ajusta limites fora da faixa aceita pela API oficial em vez de falhar a liberação", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    await unifi.authorizeGuest({ ...guestParams, downKbps: 250_000, upKbps: 1, bytesQuotaMB: 5_000_000 });
+    expect(mock.callsTo("/actions")[0].body).toEqual({
+      action: "AUTHORIZE_GUEST_ACCESS",
+      timeLimitMinutes: 60,
+      rxRateLimitKbps: 100_000,
+      txRateLimitKbps: 2,
+      dataUsageLimitMBytes: 1_048_576,
+    });
   });
 
   it("chave inválida cai para usuário/senha no modo auto", async () => {
@@ -190,6 +257,14 @@ describe("UniFi OS com API Key (API oficial)", () => {
     await unifi.authorizeGuest(guestParams);
     expect(mock.callsTo("/integration/")).toHaveLength(0);
     expect(mock.callsTo("/api/auth/login")).toHaveLength(1);
+  });
+});
+
+describe("revogação pela API legada", () => {
+  it("devolve null (o /stat/guest mantém a sessão encerrada para a reconciliação)", async () => {
+    await setup({ variant: "classic", username: "api", password: "pw" }, { UNIFI_USERNAME: "api", UNIFI_PASSWORD: "pw" });
+    expect(await unifi.unauthorizeGuest("aa:bb:cc:dd:ee:ff")).toBeNull();
+    expect(mock.callsTo("/api/s/default/cmd/stamgr")[0].body).toEqual({ cmd: "unauthorize-guest", mac: "aa:bb:cc:dd:ee:ff" });
   });
 });
 

@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
   const auth = await requireApiKey(req, "read");
   if ("response" in auth) return auth.response;
   try {
-    const guests = (await listActiveGuests(req.nextUrl.searchParams.get("site"))).filter(isGuestOnline);
+    const guests = (
+      await listActiveGuests(req.nextUrl.searchParams.get("site"), { withTraffic: true })
+    ).filter(isGuestOnline);
     return NextResponse.json({
       data: guests.map((g) => ({
         mac: g.mac,

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { actorOf, audit } from "@/lib/admin/audit";
 import { emitEvent } from "@/lib/integrations/webhooks";
 import { prisma } from "@/lib/prisma";
-import { unauthorizeGuest } from "@/lib/unifi";
+import { unauthorizeGuestAndSaveTraffic } from "@/lib/reconcile";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
   if (!MAC_RE.test(mac)) return NextResponse.json({ error: "MAC inválido" }, { status: 400 });
 
   try {
-    await unauthorizeGuest(mac, site);
+    await unauthorizeGuestAndSaveTraffic(mac, site);
   } catch (err) {
     logger.warn({ mac, site, err: (err as Error).message }, "admin revoke failed on UniFi");
     return NextResponse.json(

@@ -44,7 +44,7 @@ export default async function SessionsPage({
   // Nomes dos APs (best-effort): a falha aqui não pode esconder as sessões.
   const devicesPromise = listDevices(siteFilter).catch(() => []);
   try {
-    const allGuests = await listActiveGuests(siteFilter);
+    const allGuests = await listActiveGuests(siteFilter, { withTraffic: true });
     // Filtra para exibir apenas quem está efetivamente autorizado no momento
     // E garante unicidade por MAC para evitar glitches de chaves duplicadas na tabela
     const seen = new Set<string>();

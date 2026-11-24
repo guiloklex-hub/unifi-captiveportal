@@ -301,6 +301,8 @@ Para popular `bytesTx/bytesRx/lastSeenAt` periodicamente, agende um cron. Como o
 ```
 
 > Para reconciliar um site específico: `POST /api/admin/reconcile?site=<nome-do-site>`.
+> A resposta traz `updated` (sessões atualizadas), `withTraffic` (quantas receberam bytes) e `strategy` (forma de conexão usada). Em falha da controladora o endpoint responde **502** com `error`.
+> Só com API Key, quando a API legada recusa a chave, o tráfego vem da API oficial: 1 consulta por guest autorizado (`GET /v1/sites/{siteId}/clients/{clientId}`), em paralelo limitado — os contadores são os da autorização atual e zeram a cada nova liberação. Ao desconectar um guest pelo painel (Sessões, revogar token em cascata ou liberar CPF), o tráfego final devolvido pela API oficial é gravado na hora; pela API legada, a próxima reconciliação lê a sessão encerrada em `/stat/guest`.
 > O endpoint `/api/admin/*` exige cookie de admin **ou** `Authorization: Bearer $CRON_SECRET` — defina `CRON_SECRET` no `.env` (≥ 16 chars).
 
 ### 4.4 Backup do SQLite
@@ -435,8 +437,8 @@ O portal fala com a controladora por três caminhos e escolhe sozinho o melhor d
 
 | Estratégia | Autenticação | Onde funciona | Uso |
 |---|---|---|---|
-| **API oficial** (Integration API) | API Key (`X-API-KEY`) | UniFi OS com Network **9.x ou superior** | Preferida para liberar/revogar guests |
-| **API legada + API Key** | API Key | UniFi OS com Network 9+ | Estatísticas de tráfego; fallback |
+| **API oficial** (Integration API) | API Key (`X-API-KEY`) | UniFi OS com Network **9.x ou superior** | Preferida para liberar/revogar guests; também lê o tráfego dos guests (`access.authorization.usage`) |
+| **API legada + API Key** | API Key | UniFi OS com Network 9+ (nem todas as versões aceitam a chave aqui) | Estatísticas de tráfego (1 request para todos os guests); fallback |
 | **API legada + usuário/senha** | Cookie de sessão | **Todas** as versões (5.x → 10.x), UniFi OS e Network Application clássica | Compatibilidade total; fallback |
 
 | Controladora | Recomendado |
@@ -708,7 +710,9 @@ unifi-captive-portal/
 | `/v1/info` | GET | Versão da Network |
 | `/v1/sites` | GET | Sites (`internalReference` = nome curto usado na URL do portal) |
 | `/v1/sites/{siteId}/clients?filter=macAddress.eq('..')` | GET | Localiza o cliente pelo MAC (fallback: varredura paginada) |
-| `/v1/sites/{siteId}/clients/{clientId}/actions` | POST | `AUTHORIZE_GUEST_ACCESS` (`timeLimitMinutes`, `rxRateLimitKbps`=download, `txRateLimitKbps`=upload, `dataUsageLimitMBytes`) e `UNAUTHORIZE_GUEST_ACCESS` |
+| `/v1/sites/{siteId}/clients?filter=access.type.eq('GUEST')` | GET | Guests conectados |
+| `/v1/sites/{siteId}/clients/{clientId}` | GET | Tráfego do guest: `access.authorization.usage` (`rxBytes`=download, `txBytes`=upload), `authorizedAt`, `expiresAt` |
+| `/v1/sites/{siteId}/clients/{clientId}/actions` | POST | `AUTHORIZE_GUEST_ACCESS` (`timeLimitMinutes` 1–1.000.000, `rxRateLimitKbps`=download e `txRateLimitKbps`=upload 2–100.000, `dataUsageLimitMBytes` 1–1.048.576; valores fora da faixa são ajustados) e `UNAUTHORIZE_GUEST_ACCESS` (a resposta traz `revokedAuthorization.usage`: o tráfego final é gravado na sessão) |
 | `/v1/sites/{siteId}/devices` | GET | Nome dos APs |
 
 **API legada** (`/api/...` no Classic, `/proxy/network/api/...` no UniFi OS):
@@ -837,6 +841,7 @@ npx prisma studio    # abre UI em http://localhost:5555
 | `requireToken` não pode ser desmarcado no painel | `TOKEN_LOCK_REQUIRE` setado no `.env` | Comente a linha no `.env` e reinicie o PM2 |
 | Métricas de tokens não aparecem no dashboard | Nenhum token criado ainda | Crie um token em `/admin/tokens` |
 | Reconciliação não atualiza bytes | Cron não configurado | Veja seção **4.3** |
+| "Reconciliar agora" diz que a controladora não informou o tráfego | A forma de conexão usada não trouxe contadores | Atualize o portal (a API oficial passou a ser lida); confira `strategy` na resposta de `POST /api/admin/reconcile` e o log `Reconcile cycle complete` |
 | `Error: ADMIN_SECRET ausente ou com menos de 32 caracteres` no boot | `.env` sem `ADMIN_SECRET` ou com valor curto | Gere com `openssl rand -hex 32` e cole no `.env`; reinicie com `pm2 restart unifi-portal` |
 | Cron retorna `401 Não autorizado` ou `403 Origem inválida` | `CRON_SECRET` ausente, curto (< 16 chars) ou cron não envia o header `Authorization: Bearer` | Defina `CRON_SECRET` no `.env` (≥ 16 chars) e use o cron-exemplo da seção **4.3** que carrega a variável via `. /opt/unifi-captiveportal/.env` |
 | `scripts/backup.sh` falha com "sqlite3: command not found" | CLI ausente | `sudo apt install -y sqlite3` |

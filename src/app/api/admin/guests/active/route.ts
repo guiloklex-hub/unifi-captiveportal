@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET() {
   try {
-    const guests = await listActiveGuests();
+    const guests = await listActiveGuests(null, { withTraffic: true });
 
     if (guests.length === 0) {
       return NextResponse.json(jsonSafe({ guests }));

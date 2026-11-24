@@ -21,16 +21,30 @@ export type MockOptions = {
 
 export type RecordedCall = { method: string; path: string; body: unknown; headers: IncomingMessage["headers"] };
 
+/** Guest no formato de `/stat/guest` (API legada); a API oficial é derivada dele. */
+export type MockGuest = {
+  mac: string;
+  ip?: string;
+  essid?: string;
+  tx_bytes: number;
+  rx_bytes: number;
+  authorized: boolean;
+  start?: number;
+  expired?: boolean;
+};
+
 const SITE_ID = "88f7af54-98f8-306a-a1c7-c9349722b1f6";
 const CLIENT_ID = "c1a2b3c4-0000-4000-8000-000000000001";
 
 export class MockUnifi {
   calls: RecordedCall[] = [];
-  guests = [
+  guests: MockGuest[] = [
     { mac: "aa:bb:cc:dd:ee:ff", ip: "10.0.0.10", essid: "Guest", tx_bytes: 1000, rx_bytes: 2000, authorized: true },
   ];
   /** Quantas listagens de clientes da API oficial omitem os guests (cliente recém-associado). */
   hideClientsForCalls = 0;
+  /** IDs de clientes cujo detalhe na API oficial responde 404 (desconectou no meio). */
+  detailNotFound = new Set<string>();
   /** Força a próxima chamada autenticada a devolver 401 (sessão expirada). */
   expireSessionOnce = false;
   private server: Server;
@@ -62,6 +76,32 @@ export class MockUnifi {
   private json(res: ServerResponse, status: number, body: unknown, headers: Record<string, string> = {}) {
     res.writeHead(status, { "content-type": "application/json", ...headers });
     res.end(JSON.stringify(body));
+  }
+
+  /** Guests no formato da API oficial ("Client details" + "Guest access details"). */
+  private integrationClients() {
+    return this.guests.map((gst, i) => ({
+      id: i === 0 ? CLIENT_ID : `other-${i}`,
+      name: `guest-${i}`,
+      type: "WIRELESS",
+      macAddress: gst.mac,
+      ipAddress: gst.ip,
+      connectedAt: "2026-09-26T10:00:00Z",
+      access: { type: "GUEST", authorized: gst.authorized },
+      authorization: gst.authorized
+        ? {
+            authorizedAt: "2026-09-26T10:00:05Z",
+            expiresAt: "2026-09-26T11:00:05Z",
+            authorizationMethod: "API",
+            usage: {
+              durationSec: 600,
+              rxBytes: gst.rx_bytes,
+              txBytes: gst.tx_bytes,
+              bytes: gst.rx_bytes + gst.tx_bytes,
+            },
+          }
+        : undefined,
+    }));
   }
 
   private async handle(req: IncomingMessage, res: ServerResponse) {
@@ -118,23 +158,42 @@ export class MockUnifi {
         if (url.searchParams.has("filter") && !this.opts.integrationFilter) {
           return this.json(res, 400, { message: "filter not supported" });
         }
-        const visible = this.hideClientsForCalls > 0 ? [] : this.guests;
-        if (this.hideClientsForCalls > 0) this.hideClientsForCalls--;
-        const data = visible.map((gst, i) => ({
-          id: i === 0 ? CLIENT_ID : `other-${i}`,
-          name: `guest-${i}`,
-          type: "WIRELESS",
-          macAddress: gst.mac,
-          ipAddress: gst.ip,
-          connectedAt: "2026-09-26T10:00:00Z",
-          access: { type: "GUEST", authorized: gst.authorized },
-        }));
+        const hidden = this.hideClientsForCalls > 0;
+        if (hidden) this.hideClientsForCalls--;
+        // A listagem não traz `access.authorization` (só o detalhe), como na API real.
+        const data = hidden ? [] : this.integrationClients().map((c) => ({ ...c, authorization: undefined }));
         const filter = url.searchParams.get("filter");
-        const filtered = filter ? data.filter((d) => filter.includes(d.macAddress)) : data;
+        const filtered = !filter
+          ? data
+          : filter.startsWith("access.type.eq(")
+            ? data.filter((d) => filter.includes(`'${d.access.type}'`))
+            : data.filter((d) => filter.includes(d.macAddress));
         return this.json(res, 200, { offset: 0, limit: 200, count: filtered.length, totalCount: filtered.length, data: filtered });
       }
+      const detail = new RegExp(`^/sites/${SITE_ID}/clients/([^/]+)$`).exec(sub);
+      if (detail && req.method === "GET") {
+        const c = this.integrationClients().find((x) => x.id === decodeURIComponent(detail[1]));
+        if (!c || this.detailNotFound.has(c.id)) return this.json(res, 404, { code: "api.client.not-found", message: "Client not found" });
+        const { authorization, ...rest } = c;
+        return this.json(res, 200, { ...rest, access: { ...rest.access, ...(authorization ? { authorization } : {}) } });
+      }
       if (sub === `/sites/${SITE_ID}/clients/${CLIENT_ID}/actions` && req.method === "POST") {
-        return this.json(res, 200, { action: (body as { action: string }).action });
+        // Resposta oficial: AUTHORIZE → grantedAuthorization; UNAUTHORIZE → revokedAuthorization (com usage).
+        const action = (body as { action: string }).action;
+        const current = this.integrationClients()[0]?.authorization;
+        if (action === "UNAUTHORIZE_GUEST_ACCESS") {
+          return this.json(res, 200, { action, ...(current ? { revokedAuthorization: current } : {}) });
+        }
+        return this.json(res, 200, {
+          action,
+          grantedAuthorization: {
+            authorizedAt: "2026-09-26T10:00:05Z",
+            expiresAt: "2026-09-26T11:00:05Z",
+            authorizationMethod: "API",
+            usage: { durationSec: 0, rxBytes: 0, txBytes: 0, bytes: 0 },
+          },
+          ...(current ? { revokedAuthorization: current } : {}),
+        });
       }
       if (sub === `/sites/${SITE_ID}/devices`) {
         return this.json(res, 200, { data: [{ macAddress: "11:22:33:44:55:66", name: "AP Recepção", model: "U7PG2" }], totalCount: 1 });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { audit } from "@/lib/admin/audit";
 import { isValidCPF, onlyDigits } from "@/lib/validators";
 import { revokeActiveCpfSessions } from "@/lib/cpfLock";
-import { unauthorizeGuest } from "@/lib/unifi";
+import { unauthorizeGuestAndSaveTraffic } from "@/lib/reconcile";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   await Promise.all(
     devices.map(({ mac, site }) =>
-      unauthorizeGuest(mac, site).catch((err) =>
+      unauthorizeGuestAndSaveTraffic(mac, site).catch((err) =>
         log.warn({ mac, site, err: (err as Error).message }, "unauthorize failed on UniFi"),
       ),
     ),
