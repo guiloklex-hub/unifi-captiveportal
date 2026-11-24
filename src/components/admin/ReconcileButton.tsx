@@ -21,9 +21,17 @@ export function ReconcileButton({ dict }: { dict: Dictionary }) {
         setError(j?.error ?? dict.admin.reconcileFail);
         return;
       }
-      const data = (await res.json().catch(() => null)) as { updated?: number } | null;
+      const data = (await res.json().catch(() => null)) as
+        | { updated?: number; withTraffic?: number; strategy?: string | null }
+        | null;
       const updated = data?.updated ?? 0;
-      setStatus(dict.admin.reconcileDone.replace("{n}", String(updated)));
+      const done = dict.admin.reconcileDone.replace("{n}", String(updated));
+      // Sessões atualizadas sem nenhum contador: deixa claro que o problema é a fonte.
+      const noTraffic =
+        updated > 0 && data?.withTraffic === 0
+          ? ` ${dict.admin.reconcileNoTraffic.replace("{strategy}", data?.strategy ?? "?")}`
+          : "";
+      setStatus(done + noTraffic);
       startTransition(() => router.refresh());
     } catch {
       setStatus(null);

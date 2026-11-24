@@ -86,6 +86,17 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Removidas as dependências sem uso `date-fns` e `@radix-ui/react-toast`.
 
 ### Corrigido
+- **Tráfego zerado com API Key** (Network 9.1 → 11.x): quando a API legada recusava a chave, a reconciliação caía
+  na API oficial, que não trazia bytes — e ainda gravava `null` por cima dos valores existentes. Agora o tráfego é lido
+  de `access.authorization.usage` no detalhe de cada guest (`GET /v1/sites/{siteId}/clients/{clientId}`), conforme a
+  especificação oficial; sem contadores na fonte, os bytes já gravados são mantidos.
+- Reconciliação com a API legada usa a autorização **mais recente** de cada MAC (`/stat/guest` também lista
+  sessões antigas, que podiam sobrescrever o tráfego da atual).
+- `POST /api/admin/reconcile` responde 502 em falha (o botão mostrava "0 atualizadas"); a resposta inclui
+  `withTraffic` e `strategy`, e o painel avisa quando a controladora não informa tráfego.
+- Liberação pela API oficial com limites fora da faixa do spec (ex.: velocidade > 100 Mbps, cota > 1 TB) era
+  recusada com 400; os valores agora são ajustados à faixa aceita, com aviso no log.
+- Erros da API oficial mostram `code`/`message` do formato oficial; recusa de `?filter=` fica memorizada.
 - **Conexão UniFi — "fetch failed" sem explicação**: o teste de conexão e os logs agora mostram a causa real
   (ex.: `EHOSTUNREACH`, `ECONNREFUSED`, tempo de conexão esgotado, certificado) com uma dica. No Docker, a tela
   avisa quando o IP da controladora cai dentro da rede interna do container (`172.17`–`172.31.x.x`), caso em que

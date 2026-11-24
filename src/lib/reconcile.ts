@@ -1,43 +1,87 @@
 import { prisma } from "./prisma";
-import { listActiveGuests, type UniFiGuest } from "./unifi";
+import { lastStatsStrategy, listActiveGuests, type UniFiGuest, type UniFiStrategy } from "./unifi";
 import { logger } from "./logger";
+
+export type ReconcileResult = {
+  ok: boolean;
+  /** Guests devolvidos pela controladora. */
+  active: number;
+  /** Registros locais atualizados (lastSeenAt). */
+  updated: number;
+  /** Desses, quantos receberam contadores de tráfego. */
+  withTraffic: number;
+  /** Forma de conexão usada para ler os guests. */
+  strategy: UniFiStrategy | null;
+  error?: string;
+};
+
+function hasCounters(g: UniFiGuest): boolean {
+  return typeof g.tx_bytes === "number" || typeof g.rx_bytes === "number";
+}
+
+function totalBytes(g: UniFiGuest): number {
+  return (g.tx_bytes ?? 0) + (g.rx_bytes ?? 0);
+}
+
+/**
+ * Um registro por MAC. A API legada (`/stat/guest`) devolve também autorizações
+ * antigas do mesmo aparelho: vale a mais recente (maior `start`), e no empate a
+ * que tem contadores/mais bytes — sem isso, um registro antigo podia sobrescrever
+ * o tráfego da sessão atual conforme a ordem da resposta.
+ */
+export function latestGuestByMac(guests: UniFiGuest[]): Map<string, UniFiGuest> {
+  const out = new Map<string, UniFiGuest>();
+  for (const g of guests) {
+    if (!g.mac) continue;
+    const mac = g.mac.toLowerCase();
+    const cur = out.get(mac);
+    if (!cur) {
+      out.set(mac, g);
+      continue;
+    }
+    const a = g.start ?? 0;
+    const b = cur.start ?? 0;
+    if (a > b || (a === b && (Number(hasCounters(g)) > Number(hasCounters(cur)) || totalBytes(g) > totalBytes(cur)))) {
+      out.set(mac, g);
+    }
+  }
+  return out;
+}
 
 /**
  * Reconcilia o estado de sessões UniFi com o GuestRegistration local:
- * atualiza bytesTx/bytesRx/lastSeenAt para cada MAC ativo na controladora.
+ * atualiza bytesTx/bytesRx/lastSeenAt do registro mais recente de cada MAC
+ * conhecido pela controladora.
  *
- * Estratégia: busca numa única consulta o registro mais recente de cada MAC
- * ativo e atualiza cada um. Tolerante a erro — logs para diagnóstico.
+ * Quando a fonte não informa contadores, os bytes já gravados são mantidos
+ * (antes eram zerados para null). Tolerante a erro — logs para diagnóstico.
  */
-export async function reconcileActiveSessions(siteOverride?: string | null): Promise<{
-  ok: boolean;
-  active: number;
-  updated: number;
-  error?: string;
-}> {
+export async function reconcileActiveSessions(siteOverride?: string | null): Promise<ReconcileResult> {
   const startedAt = Date.now();
   let unifiGuests: UniFiGuest[];
   try {
-    unifiGuests = await listActiveGuests(siteOverride);
+    unifiGuests = await listActiveGuests(siteOverride, { withTraffic: true });
   } catch (err) {
     const msg = (err as Error).message;
     logger.warn({ err: msg, site: siteOverride }, "Reconcile failed to list UniFi guests");
-    return { ok: false, active: 0, updated: 0, error: msg };
+    return { ok: false, active: 0, updated: 0, withTraffic: 0, strategy: lastStatsStrategy(), error: msg };
   }
 
+  const strategy = lastStatsStrategy();
   const now = new Date();
   let updated = 0;
+  let withTraffic = 0;
 
-  const macs = [...new Set(unifiGuests.filter((g) => g.mac).map((g) => g.mac.toLowerCase()))];
-  if (macs.length === 0) {
-    logger.info({ active: unifiGuests.length, updated, ms: Date.now() - startedAt }, "Reconcile cycle complete");
-    return { ok: true, active: unifiGuests.length, updated };
+  const byMac = latestGuestByMac(unifiGuests);
+  if (byMac.size === 0) {
+    logger.info({ active: unifiGuests.length, updated, strategy, ms: Date.now() - startedAt }, "Reconcile cycle complete");
+    return { ok: true, active: unifiGuests.length, updated, withTraffic, strategy };
   }
 
   // Uma consulta para todos os MACs (antes: 1 findFirst por guest ativo — N+1).
   // Ordenado DESC: o primeiro registro visto por MAC é o mais recente.
   const rows = await prisma.guestRegistration.findMany({
-    where: { macAddress: { in: macs } },
+    where: { macAddress: { in: [...byMac.keys()] } },
     orderBy: { authorizedAt: "desc" },
     select: { id: true, macAddress: true },
   });
@@ -46,31 +90,37 @@ export async function reconcileActiveSessions(siteOverride?: string | null): Pro
     if (!latestIdByMac.has(r.macAddress)) latestIdByMac.set(r.macAddress, r.id);
   }
 
-  for (const g of unifiGuests) {
-    if (!g.mac) continue;
-    const mac = g.mac.toLowerCase();
+  for (const [mac, g] of byMac) {
     const id = latestIdByMac.get(mac);
     if (id === undefined) continue;
 
+    const traffic = hasCounters(g);
     try {
       await prisma.guestRegistration.update({
         where: { id },
         data: {
-          bytesTx: typeof g.tx_bytes === "number" ? BigInt(g.tx_bytes) : null,
-          bytesRx: typeof g.rx_bytes === "number" ? BigInt(g.rx_bytes) : null,
+          ...(typeof g.tx_bytes === "number" ? { bytesTx: BigInt(Math.trunc(g.tx_bytes)) } : {}),
+          ...(typeof g.rx_bytes === "number" ? { bytesRx: BigInt(Math.trunc(g.rx_bytes)) } : {}),
           lastSeenAt: now,
-          reconciledAt: now,
+          ...(traffic ? { reconciledAt: now } : {}),
         },
       });
       updated += 1;
+      if (traffic) withTraffic += 1;
     } catch (err) {
       logger.warn({ mac, err: (err as Error).message }, "Reconcile update failed");
     }
   }
 
+  if (updated > 0 && withTraffic === 0) {
+    logger.warn(
+      { strategy, updated },
+      "Reconcile: a controladora não informou contadores de tráfego para nenhum guest",
+    );
+  }
   logger.info(
-    { active: unifiGuests.length, updated, ms: Date.now() - startedAt },
+    { active: unifiGuests.length, updated, withTraffic, strategy, ms: Date.now() - startedAt },
     "Reconcile cycle complete",
   );
-  return { ok: true, active: unifiGuests.length, updated };
+  return { ok: true, active: unifiGuests.length, updated, withTraffic, strategy };
 }

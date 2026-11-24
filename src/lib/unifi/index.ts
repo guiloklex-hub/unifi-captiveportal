@@ -20,6 +20,7 @@ import {
   integrationPrefix,
   integrationUnauthorizeGuest,
   integrationVersion,
+  type ListGuestsOptions,
 } from "./integration";
 import {
   clearLegacySession,
@@ -54,7 +55,7 @@ import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite, UniFiStrategy
  */
 
 export { UniFiUnavailableError, UniFiClientError, UniFiClientNotFoundError, UniFiAuthError, UniFiNotSupportedError, UniFiNotConfiguredError };
-export type { UniFiGuest, UniFiSite, UniFiDevice, UniFiStrategy, AuthorizeParams };
+export type { UniFiGuest, UniFiSite, UniFiDevice, UniFiStrategy, AuthorizeParams, ListGuestsOptions };
 
 const UNSUPPORTED_TTL_MS = 10 * 60 * 1000;
 const SITE_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -83,7 +84,8 @@ export function strategiesFor(cfg: UniFiConfig, op: Op): UniFiStrategy[] {
   const pass = hasPassword(cfg) && cfg.authMode !== "apikey";
   const order: UniFiStrategy[] =
     op === "stats"
-      ? // Contadores de tráfego só existem na API legada.
+      ? // API legada primeiro: 1 request traz guests + bytes (inclusive sessões já
+        // encerradas). A oficial também traz bytes, mas exige 1 request por guest.
         ["legacy-apikey", "legacy-session", "integration"]
       : ["integration", "legacy-apikey", "legacy-session"];
   return order.filter((s) => (s === "legacy-session" ? pass : key));
@@ -169,13 +171,25 @@ export async function unauthorizeGuest(mac: string, siteOverride?: string | null
   });
 }
 
-export async function listActiveGuests(siteOverride?: string | null): Promise<UniFiGuest[]> {
+/**
+ * Guests da controladora. Passe `{ withTraffic: true }` quando for exibir ou
+ * gravar bytes: na API oficial isso custa 1 request extra por guest autorizado.
+ */
+export async function listActiveGuests(
+  siteOverride?: string | null,
+  opts: ListGuestsOptions = {},
+): Promise<UniFiGuest[]> {
   return run("stats", (cfg, strategy) => {
     const site = resolveSite(cfg, siteOverride);
     return strategy === "integration"
-      ? integrationListGuests(cfg, site)
+      ? integrationListGuests(cfg, site, opts)
       : legacyListGuests(cfg, site, legacyAuthOf(strategy));
   });
+}
+
+/** Última estratégia que respondeu para estatísticas (diagnóstico da reconciliação). */
+export function lastStatsStrategy(): UniFiStrategy | null {
+  return g.__unifiFacade?.lastUsed.stats ?? null;
 }
 
 /**

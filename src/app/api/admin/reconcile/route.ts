@@ -8,5 +8,6 @@ export async function POST(req: NextRequest) {
   const sp = req.nextUrl.searchParams;
   const site = sp.get("site");
   const result = await reconcileActiveSessions(site);
-  return NextResponse.json(result);
+  // 502 em falha: o botão do painel mostra o erro em vez de "0 atualizadas".
+  return NextResponse.json(result, { status: result.ok ? 200 : 502 });
 }
