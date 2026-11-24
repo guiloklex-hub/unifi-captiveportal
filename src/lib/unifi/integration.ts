@@ -314,14 +314,26 @@ export async function integrationAuthorizeGuest(cfg: UniFiConfig, siteName: stri
   await request(cfg, `/v1/sites/${siteId}/clients/${client.id}/actions`, { method: "POST", body });
 }
 
-export async function integrationUnauthorizeGuest(cfg: UniFiConfig, siteName: string, mac: string): Promise<void> {
+/**
+ * Revoga o acesso e devolve os contadores finais da autorização revogada
+ * (`revokedAuthorization.usage`, obrigatório na resposta desde a Network 9.1).
+ * Depois disso o guest some da listagem — é a última chance de ler o tráfego.
+ */
+export async function integrationUnauthorizeGuest(
+  cfg: UniFiConfig,
+  siteName: string,
+  mac: string,
+): Promise<UniFiGuest | null> {
   const siteId = await resolveSiteId(cfg, siteName);
   const client = await findClientByMac(cfg, siteId, mac);
-  if (!client) return; // já desconectado — nada a revogar
-  await request(cfg, `/v1/sites/${siteId}/clients/${client.id}/actions`, {
-    method: "POST",
-    body: { action: "UNAUTHORIZE_GUEST_ACCESS" },
-  });
+  if (!client || !client.macAddress) return null; // já desconectado — nada a revogar
+  const res = await request<{ revokedAuthorization?: IntegrationGuestAuthorization } | undefined>(
+    cfg,
+    `/v1/sites/${siteId}/clients/${client.id}/actions`,
+    { method: "POST", body: { action: "UNAUTHORIZE_GUEST_ACCESS" } },
+  );
+  const revoked = res?.revokedAuthorization;
+  return revoked ? { ...toGuest(client, revoked), authorized: false } : null;
 }
 
 export type ListGuestsOptions = {

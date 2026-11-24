@@ -162,12 +162,17 @@ export async function authorizeGuest(opts: AuthorizeGuestOptions): Promise<void>
   });
 }
 
-export async function unauthorizeGuest(mac: string, siteOverride?: string | null): Promise<void> {
-  await run("write", (cfg, strategy) => {
+/**
+ * Revoga o acesso do guest. Pela API oficial, devolve o tráfego final da
+ * autorização revogada (bytes, início/fim); pela legada devolve `null` — lá o
+ * `/stat/guest` mantém a sessão encerrada e a próxima reconciliação a lê.
+ */
+export async function unauthorizeGuest(mac: string, siteOverride?: string | null): Promise<UniFiGuest | null> {
+  return run("write", async (cfg, strategy) => {
     const site = resolveSite(cfg, siteOverride);
-    return strategy === "integration"
-      ? integrationUnauthorizeGuest(cfg, site, mac)
-      : legacyUnauthorizeGuest(cfg, site, mac, legacyAuthOf(strategy));
+    if (strategy === "integration") return integrationUnauthorizeGuest(cfg, site, mac);
+    await legacyUnauthorizeGuest(cfg, site, mac, legacyAuthOf(strategy));
+    return null;
   });
 }
 

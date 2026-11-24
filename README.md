@@ -302,7 +302,7 @@ Para popular `bytesTx/bytesRx/lastSeenAt` periodicamente, agende um cron. Como o
 
 > Para reconciliar um site específico: `POST /api/admin/reconcile?site=<nome-do-site>`.
 > A resposta traz `updated` (sessões atualizadas), `withTraffic` (quantas receberam bytes) e `strategy` (forma de conexão usada). Em falha da controladora o endpoint responde **502** com `error`.
-> Só com API Key, quando a API legada recusa a chave, o tráfego vem da API oficial: 1 consulta por guest autorizado (`GET /v1/sites/{siteId}/clients/{clientId}`), em paralelo limitado — os contadores são os da autorização atual e zeram a cada nova liberação.
+> Só com API Key, quando a API legada recusa a chave, o tráfego vem da API oficial: 1 consulta por guest autorizado (`GET /v1/sites/{siteId}/clients/{clientId}`), em paralelo limitado — os contadores são os da autorização atual e zeram a cada nova liberação. Ao desconectar um guest pelo painel (Sessões, revogar token em cascata ou liberar CPF), o tráfego final devolvido pela API oficial é gravado na hora; pela API legada, a próxima reconciliação lê a sessão encerrada em `/stat/guest`.
 > O endpoint `/api/admin/*` exige cookie de admin **ou** `Authorization: Bearer $CRON_SECRET` — defina `CRON_SECRET` no `.env` (≥ 16 chars).
 
 ### 4.4 Backup do SQLite
@@ -712,7 +712,7 @@ unifi-captive-portal/
 | `/v1/sites/{siteId}/clients?filter=macAddress.eq('..')` | GET | Localiza o cliente pelo MAC (fallback: varredura paginada) |
 | `/v1/sites/{siteId}/clients?filter=access.type.eq('GUEST')` | GET | Guests conectados |
 | `/v1/sites/{siteId}/clients/{clientId}` | GET | Tráfego do guest: `access.authorization.usage` (`rxBytes`=download, `txBytes`=upload), `authorizedAt`, `expiresAt` |
-| `/v1/sites/{siteId}/clients/{clientId}/actions` | POST | `AUTHORIZE_GUEST_ACCESS` (`timeLimitMinutes` 1–1.000.000, `rxRateLimitKbps`=download e `txRateLimitKbps`=upload 2–100.000, `dataUsageLimitMBytes` 1–1.048.576; valores fora da faixa são ajustados) e `UNAUTHORIZE_GUEST_ACCESS` |
+| `/v1/sites/{siteId}/clients/{clientId}/actions` | POST | `AUTHORIZE_GUEST_ACCESS` (`timeLimitMinutes` 1–1.000.000, `rxRateLimitKbps`=download e `txRateLimitKbps`=upload 2–100.000, `dataUsageLimitMBytes` 1–1.048.576; valores fora da faixa são ajustados) e `UNAUTHORIZE_GUEST_ACCESS` (a resposta traz `revokedAuthorization.usage`: o tráfego final é gravado na sessão) |
 | `/v1/sites/{siteId}/devices` | GET | Nome dos APs |
 
 **API legada** (`/api/...` no Classic, `/proxy/network/api/...` no UniFi OS):

@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 import { deriveStatus } from "@/lib/tokens";
 import { extendTokenSchema } from "@/lib/tokenValidators";
-import { unauthorizeGuest } from "@/lib/unifi";
+import { unauthorizeGuestAndSaveTraffic } from "@/lib/reconcile";
 import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
@@ -29,7 +29,7 @@ async function disconnectActiveGuests(tokenId: string): Promise<{ attempted: num
   let failed = 0;
   for (const g of stillActive) {
     try {
-      await unauthorizeGuest(g.macAddress, g.site);
+      await unauthorizeGuestAndSaveTraffic(g.macAddress, g.site);
     } catch (err) {
       failed += 1;
       logger.warn(

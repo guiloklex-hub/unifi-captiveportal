@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { lastStatsStrategy, listActiveGuests, type UniFiGuest, type UniFiStrategy } from "./unifi";
+import { lastStatsStrategy, listActiveGuests, unauthorizeGuest, type UniFiGuest, type UniFiStrategy } from "./unifi";
 import { logger } from "./logger";
 
 export type ReconcileResult = {
@@ -123,4 +123,51 @@ export async function reconcileActiveSessions(siteOverride?: string | null): Pro
     "Reconcile cycle complete",
   );
   return { ok: true, active: unifiGuests.length, updated, withTraffic, strategy };
+}
+
+/**
+ * Grava o tráfego final de uma autorização revogada no registro mais recente do
+ * MAC. Best-effort: nunca lança (a revogação já aconteceu na controladora).
+ * Retorna `true` quando havia contadores e o registro foi atualizado.
+ */
+export async function saveRevokedTraffic(mac: string, usage: UniFiGuest | null): Promise<boolean> {
+  if (!usage || !hasCounters(usage)) return false;
+  const target = mac.toLowerCase();
+  try {
+    const reg = await prisma.guestRegistration.findFirst({
+      where: { macAddress: target },
+      orderBy: { authorizedAt: "desc" },
+      select: { id: true },
+    });
+    if (!reg) return false;
+    const now = new Date();
+    await prisma.guestRegistration.update({
+      where: { id: reg.id },
+      data: {
+        ...(typeof usage.tx_bytes === "number" ? { bytesTx: BigInt(Math.trunc(usage.tx_bytes)) } : {}),
+        ...(typeof usage.rx_bytes === "number" ? { bytesRx: BigInt(Math.trunc(usage.rx_bytes)) } : {}),
+        lastSeenAt: now,
+        reconciledAt: now,
+      },
+    });
+    logger.info(
+      { mac: target, id: reg.id, tx: usage.tx_bytes, rx: usage.rx_bytes },
+      "Tráfego final da sessão revogada gravado",
+    );
+    return true;
+  } catch (err) {
+    logger.warn({ mac: target, err: (err as Error).message }, "Falha ao gravar o tráfego final da sessão revogada");
+    return false;
+  }
+}
+
+/**
+ * Revoga o guest na controladora e guarda o tráfego final devolvido pela API
+ * oficial — sem isso, os bytes entre a última reconciliação e a revogação se
+ * perdiam (o guest some da listagem da API oficial ao ser desconectado).
+ * Erros da controladora são propagados, como em `unauthorizeGuest`.
+ */
+export async function unauthorizeGuestAndSaveTraffic(mac: string, site?: string | null): Promise<void> {
+  const usage = await unauthorizeGuest(mac, site);
+  await saveRevokedTraffic(mac, usage);
 }

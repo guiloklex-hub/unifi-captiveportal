@@ -97,6 +97,9 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Liberação pela API oficial com limites fora da faixa do spec (ex.: velocidade > 100 Mbps, cota > 1 TB) era
   recusada com 400; os valores agora são ajustados à faixa aceita, com aviso no log.
 - Erros da API oficial mostram `code`/`message` do formato oficial; recusa de `?filter=` fica memorizada.
+- **Tráfego final ao desconectar**: revogar um guest (Sessões, revogação de token em cascata, liberar CPF) pela API
+  oficial grava os bytes de `revokedAuthorization.usage` na sessão — antes, o tráfego desde a última reconciliação
+  se perdia, porque o guest some da listagem da API oficial ao ser desconectado.
 - **Conexão UniFi — "fetch failed" sem explicação**: o teste de conexão e os logs agora mostram a causa real
   (ex.: `EHOSTUNREACH`, `ECONNREFUSED`, tempo de conexão esgotado, certificado) com uma dica. No Docker, a tela
   avisa quando o IP da controladora cai dentro da rede interna do container (`172.17`–`172.31.x.x`), caso em que

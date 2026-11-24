@@ -178,7 +178,22 @@ export class MockUnifi {
         return this.json(res, 200, { ...rest, access: { ...rest.access, ...(authorization ? { authorization } : {}) } });
       }
       if (sub === `/sites/${SITE_ID}/clients/${CLIENT_ID}/actions` && req.method === "POST") {
-        return this.json(res, 200, { action: (body as { action: string }).action });
+        // Resposta oficial: AUTHORIZE → grantedAuthorization; UNAUTHORIZE → revokedAuthorization (com usage).
+        const action = (body as { action: string }).action;
+        const current = this.integrationClients()[0]?.authorization;
+        if (action === "UNAUTHORIZE_GUEST_ACCESS") {
+          return this.json(res, 200, { action, ...(current ? { revokedAuthorization: current } : {}) });
+        }
+        return this.json(res, 200, {
+          action,
+          grantedAuthorization: {
+            authorizedAt: "2026-09-26T10:00:05Z",
+            expiresAt: "2026-09-26T11:00:05Z",
+            authorizationMethod: "API",
+            usage: { durationSec: 0, rxBytes: 0, txBytes: 0, bytes: 0 },
+          },
+          ...(current ? { revokedAuthorization: current } : {}),
+        });
       }
       if (sub === `/sites/${SITE_ID}/devices`) {
         return this.json(res, 200, { data: [{ macAddress: "11:22:33:44:55:66", name: "AP Recepção", model: "U7PG2" }], totalCount: 1 });

@@ -115,6 +115,19 @@ describe("UniFi OS com API Key (API oficial)", () => {
     expect(action.body).toEqual({ action: "UNAUTHORIZE_GUEST_ACCESS" });
   });
 
+  it("revogar devolve o tráfego final da autorização (revokedAuthorization.usage)", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    const usage = await unifi.unauthorizeGuest("AA:BB:CC:DD:EE:FF");
+    expect(usage).toMatchObject({ mac: "aa:bb:cc:dd:ee:ff", rx_bytes: 2000, tx_bytes: 1000, authorized: false });
+    expect(usage?.end).toBe(Date.parse("2026-09-26T11:00:05Z") / 1000);
+  });
+
+  it("revogar cliente já desconectado não chama a ação e devolve null", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    expect(await unifi.unauthorizeGuest("aa:bb:cc:dd:ee:99")).toBeNull();
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+  });
+
   it("espera o cliente recém-associado aparecer na API oficial", async () => {
     await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "5000" });
     mock.hideClientsForCalls = 2;
@@ -244,6 +257,14 @@ describe("UniFi OS com API Key (API oficial)", () => {
     await unifi.authorizeGuest(guestParams);
     expect(mock.callsTo("/integration/")).toHaveLength(0);
     expect(mock.callsTo("/api/auth/login")).toHaveLength(1);
+  });
+});
+
+describe("revogação pela API legada", () => {
+  it("devolve null (o /stat/guest mantém a sessão encerrada para a reconciliação)", async () => {
+    await setup({ variant: "classic", username: "api", password: "pw" }, { UNIFI_USERNAME: "api", UNIFI_PASSWORD: "pw" });
+    expect(await unifi.unauthorizeGuest("aa:bb:cc:dd:ee:ff")).toBeNull();
+    expect(mock.callsTo("/api/s/default/cmd/stamgr")[0].body).toEqual({ cmd: "unauthorize-guest", mac: "aa:bb:cc:dd:ee:ff" });
   });
 });
 
