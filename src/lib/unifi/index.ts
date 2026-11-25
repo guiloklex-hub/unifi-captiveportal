@@ -36,7 +36,7 @@ import {
   legacyVersion,
   type LegacyAuth,
 } from "./legacy";
-import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite, UniFiStrategy } from "./types";
+import type { AuthorizeParams, AuthorizeResult, UniFiDevice, UniFiGuest, UniFiSite, UniFiStrategy } from "./types";
 
 /**
  * Cliente UniFi com múltiplas estratégias de conexão e fallback automático.
@@ -55,7 +55,7 @@ import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite, UniFiStrategy
  */
 
 export { UniFiUnavailableError, UniFiClientError, UniFiClientNotFoundError, UniFiAuthError, UniFiNotSupportedError, UniFiNotConfiguredError };
-export type { UniFiGuest, UniFiSite, UniFiDevice, UniFiStrategy, AuthorizeParams, ListGuestsOptions };
+export type { UniFiGuest, UniFiSite, UniFiDevice, UniFiStrategy, AuthorizeParams, AuthorizeResult, ListGuestsOptions };
 
 const UNSUPPORTED_TTL_MS = 10 * 60 * 1000;
 const SITE_NAME_RE = /^[A-Za-z0-9_-]{1,64}$/;
@@ -153,12 +153,18 @@ async function run<T>(op: Op, fn: (cfg: UniFiConfig, strategy: UniFiStrategy) =>
 
 export type AuthorizeGuestOptions = AuthorizeParams & { site?: string | null };
 
-export async function authorizeGuest(opts: AuthorizeGuestOptions): Promise<void> {
-  await run("write", (cfg, strategy) => {
+/**
+ * Libera o guest e devolve o MAC efetivamente liberado. Com `clientIp`, a API
+ * oficial pode liberar outro MAC (o do guest conectado com esse IP) quando o MAC
+ * informado não está conectado — grave o registro com o MAC devolvido.
+ */
+export async function authorizeGuest(opts: AuthorizeGuestOptions): Promise<AuthorizeResult> {
+  return run("write", async (cfg, strategy) => {
     const site = resolveSite(cfg, opts.site);
-    return strategy === "integration"
-      ? integrationAuthorizeGuest(cfg, site, opts)
-      : legacyAuthorizeGuest(cfg, site, opts, legacyAuthOf(strategy));
+    if (strategy === "integration") return integrationAuthorizeGuest(cfg, site, opts);
+    // A API legada libera pelo MAC direto, sem consultar a lista de clientes.
+    await legacyAuthorizeGuest(cfg, site, opts, legacyAuthOf(strategy));
+    return { mac: opts.mac.toLowerCase(), matchedBy: "mac" };
   });
 }
 

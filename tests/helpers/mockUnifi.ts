@@ -31,6 +31,8 @@ export type MockGuest = {
   authorized: boolean;
   start?: number;
   expired?: boolean;
+  /** `access.type` na API oficial (padrão GUEST). */
+  accessType?: string;
 };
 
 const SITE_ID = "88f7af54-98f8-306a-a1c7-c9349722b1f6";
@@ -87,7 +89,7 @@ export class MockUnifi {
       macAddress: gst.mac,
       ipAddress: gst.ip,
       connectedAt: "2026-09-26T10:00:00Z",
-      access: { type: "GUEST", authorized: gst.authorized },
+      access: { type: gst.accessType ?? "GUEST", authorized: gst.authorized },
       authorization: gst.authorized
         ? {
             authorizedAt: "2026-09-26T10:00:05Z",

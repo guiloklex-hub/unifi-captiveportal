@@ -86,6 +86,10 @@ O formato segue [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 - Removidas as dependências sem uso `date-fns` e `@radix-ui/react-toast`.
 
 ### Corrigido
+- **"Não foi possível liberar o acesso" só com API Key**: se o MAC da URL do portal não estava conectado (ex.: o
+  Android trocou o MAC aleatório com a página do portal aberta), a API oficial esperava 12 s e desistia. Agora, nesse
+  caso, ela libera na hora o guest conectado com o IP de quem enviou o formulário — só clientes da rede de convidados,
+  só se esse MAC não estiver bloqueado, e nunca na liberação pelo admin. O cadastro é gravado com o MAC liberado.
 - **Tráfego zerado com API Key** (Network 9.1 → 11.x): quando a API legada recusava a chave, a reconciliação caía
   na API oficial, que não trazia bytes — e ainda gravava `null` por cima dos valores existentes. Agora o tráfego é lido
   de `access.authorization.usage` no detalhe de cada guest (`GET /v1/sites/{siteId}/clients/{clientId}`), conforme a

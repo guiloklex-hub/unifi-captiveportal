@@ -23,7 +23,19 @@ export type AuthorizeParams = {
   downKbps?: number;
   bytesQuotaMB?: number;
   apMac?: string | null;
+  /**
+   * IP de onde o guest pediu o acesso. Se o MAC informado não estiver conectado
+   * (ex.: o Android trocou o MAC aleatório com a página do portal aberta), a API
+   * oficial libera o guest conectado com este IP. Só para pedidos vindos do
+   * próprio dispositivo — nunca o IP do admin.
+   */
+  clientIp?: string | null;
+  /** Confere o MAC achado pelo IP antes de liberá-lo (ex.: regras de bloqueio). */
+  allowIpMatch?: (mac: string) => Promise<boolean>;
 };
+
+/** MAC efetivamente liberado e como o cliente foi encontrado na controladora. */
+export type AuthorizeResult = { mac: string; matchedBy: "mac" | "ip" };
 
 export type UniFiSite = {
   /** Nome curto usado na API legada (`default`, `abc123xy`). */
