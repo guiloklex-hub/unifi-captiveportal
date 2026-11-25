@@ -8,7 +8,7 @@ import {
   UniFiUnavailableError,
 } from "./errors";
 import { unifiHttp } from "./http";
-import type { AuthorizeParams, UniFiDevice, UniFiGuest, UniFiSite } from "./types";
+import type { AuthorizeParams, AuthorizeResult, UniFiDevice, UniFiGuest, UniFiSite } from "./types";
 
 /**
  * API oficial "UniFi Network Integration API" (Network 9.x+), autenticada por
@@ -252,25 +252,55 @@ async function listClientsFiltered(cfg: UniFiConfig, siteId: string, filter: str
   }
 }
 
-async function findClientByMac(cfg: UniFiConfig, siteId: string, mac: string): Promise<IntegrationClient | null> {
+type ClientMatch = { client: IntegrationClient; matchedBy: "mac" | "ip" };
+
+function isGuestClient(c: IntegrationClient): boolean {
+  return (c.access?.type ?? "").toUpperCase() === "GUEST";
+}
+
+/**
+ * Cliente pelo MAC; sem ele e com `ip` informado, o guest conectado com esse IP.
+ * A busca por IP reaproveita a varredura já feita para o MAC (sem request extra).
+ */
+async function findClient(cfg: UniFiConfig, siteId: string, mac: string, ip?: string): Promise<ClientMatch | null> {
   const target = mac.toLowerCase();
   const matches = (c: IntegrationClient) => (c.macAddress ?? "").toLowerCase() === target;
   const filtered = await listClientsFiltered(cfg, siteId, encodeURIComponent(`macAddress.eq('${target}')`));
   const hit = filtered?.find(matches);
-  if (hit) return hit;
+  if (hit) return { client: hit, matchedBy: "mac" };
   const all = await listAll<IntegrationClient>(cfg, `/v1/sites/${siteId}/clients`);
-  return all.find(matches) ?? null;
+  const scanned = all.find(matches);
+  if (scanned) return { client: scanned, matchedBy: "mac" };
+  if (!ip) return null;
+  // Só guests: o IP nunca libera um cliente de rede comum.
+  const byIp = all.find((c) => c.ipAddress === ip && c.macAddress && isGuestClient(c));
+  return byIp ? { client: byIp, matchedBy: "ip" } : null;
 }
 
-async function requireClient(cfg: UniFiConfig, siteId: string, mac: string): Promise<IntegrationClient> {
+async function findClientByMac(cfg: UniFiConfig, siteId: string, mac: string): Promise<IntegrationClient | null> {
+  return (await findClient(cfg, siteId, mac))?.client ?? null;
+}
+
+type IpFallback = { ip?: string | null; allow?: (mac: string) => Promise<boolean> };
+
+async function requireClient(cfg: UniFiConfig, siteId: string, mac: string, fallback: IpFallback = {}): Promise<ClientMatch> {
   const started = Date.now();
   const deadline = started + clientWaitMs();
+  let ip = fallback.ip || undefined;
   let attempt = 0;
   for (;;) {
-    const client = await findClientByMac(cfg, siteId, mac);
-    if (client) {
+    const found = await findClient(cfg, siteId, mac, ip);
+    if (found?.matchedBy === "mac") {
       if (attempt > 0) logger.info({ mac, attempts: attempt + 1, waitedMs: Date.now() - started }, "UniFi client found after waiting");
-      return client;
+      return found;
+    }
+    if (found) {
+      // MAC informado não está conectado, mas o dispositivo que fez o pedido está
+      // (com outro MAC) — típico do MAC aleatório trocado com o portal aberto.
+      const ipMac = found.client.macAddress!.toLowerCase();
+      if (!fallback.allow || (await fallback.allow(ipMac))) return found;
+      logger.warn({ mac, ip, ipMac }, "UniFi: guest achado pelo IP recusado pelas regras do portal");
+      ip = undefined;
     }
     // Recém-associado: a controladora pode levar um tempo para listar o cliente.
     const remaining = deadline - Date.now();
@@ -279,9 +309,9 @@ async function requireClient(cfg: UniFiConfig, siteId: string, mac: string): Pro
     await sleep(Math.min(step, remaining));
     attempt++;
   }
-  throw new UniFiClientNotFoundError(
-    `Cliente ${mac} não está conectado ao site (aguardado ${Math.round((Date.now() - started) / 1000)}s)`,
-  );
+  const waited = Math.round((Date.now() - started) / 1000);
+  const byIp = fallback.ip ? ` nem há guest com o IP ${fallback.ip}` : "";
+  throw new UniFiClientNotFoundError(`Cliente ${mac} não está conectado ao site${byIp} (aguardado ${waited}s)`);
 }
 
 /**
@@ -297,9 +327,13 @@ function clampToSpec(field: keyof typeof AUTHORIZE_RANGES, value: number, mac: s
   return applied;
 }
 
-export async function integrationAuthorizeGuest(cfg: UniFiConfig, siteName: string, p: AuthorizeParams): Promise<void> {
+export async function integrationAuthorizeGuest(
+  cfg: UniFiConfig,
+  siteName: string,
+  p: AuthorizeParams,
+): Promise<AuthorizeResult> {
   const siteId = await resolveSiteId(cfg, siteName);
-  const client = await requireClient(cfg, siteId, p.mac);
+  const { client, matchedBy } = await requireClient(cfg, siteId, p.mac, { ip: p.clientIp, allow: p.allowIpMatch });
   const body: Record<string, unknown> = {
     action: "AUTHORIZE_GUEST_ACCESS",
     timeLimitMinutes: clampToSpec("timeLimitMinutes", p.minutes, p.mac),
@@ -312,6 +346,7 @@ export async function integrationAuthorizeGuest(cfg: UniFiConfig, siteName: stri
   }
 
   await request(cfg, `/v1/sites/${siteId}/clients/${client.id}/actions`, { method: "POST", body });
+  return { mac: (client.macAddress ?? p.mac).toLowerCase(), matchedBy };
 }
 
 /**

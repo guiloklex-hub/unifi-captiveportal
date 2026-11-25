@@ -63,7 +63,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   prismaMock.guestRegistration.upsert.mockResolvedValue({ id: 42 });
   prismaMock.accessRule.findFirst.mockResolvedValue(null);
-  authorizeGuest.mockResolvedValue(undefined);
+  authorizeGuest.mockImplementation(async (p: { mac: string }) => ({ mac: p.mac.toLowerCase(), matchedBy: "mac" }));
   process.env.GUEST_UP_KBPS = "1024";
   delete process.env.PORTAL_SUCCESS_URL;
 });
@@ -139,6 +139,37 @@ describe("grantGuestAccess", () => {
     );
     expect(res.ok).toBe(true);
     expect(authorizeGuest.mock.calls[0][0].minutes).toBe(43200);
+  });
+
+  it("passa o IP do guest e grava o MAC que a UniFi liberou de fato", async () => {
+    authorizeGuest.mockResolvedValue({ mac: "f2:bd:c9:01:c1:aa", matchedBy: "ip" });
+    const res = await grantGuestAccess({ ...request, ipAddress: "192.168.102.32" }, baseSettings, dict);
+    expect(res.ok).toBe(true);
+    expect(authorizeGuest.mock.calls[0][0]).toMatchObject({ mac: "aa:bb:cc:dd:ee:ff", clientIp: "192.168.102.32" });
+    const { where, create } = prismaMock.guestRegistration.upsert.mock.calls[0][0];
+    expect(where.macAddress_authDate.macAddress).toBe("f2:bd:c9:01:c1:aa");
+    expect(create.macAddress).toBe("f2:bd:c9:01:c1:aa");
+  });
+
+  it("guest achado pelo IP passa pelas regras de bloqueio de MAC", async () => {
+    await grantGuestAccess({ ...request, ipAddress: "192.168.102.32" }, baseSettings, dict);
+    const { allowIpMatch } = authorizeGuest.mock.calls[0][0];
+    prismaMock.accessRule.findFirst.mockResolvedValueOnce({ id: "r9", matchType: "mac" });
+    expect(await allowIpMatch("F2:BD:C9:01:C1:AA")).toBe(false);
+    expect(prismaMock.accessRule.findFirst.mock.calls.at(-1)?.[0].where.AND[0].OR).toEqual([
+      { matchType: "mac", value: "f2:bd:c9:01:c1:aa" },
+    ]);
+    expect(await allowIpMatch("f2:bd:c9:01:c1:bb")).toBe(true);
+  });
+
+  it("liberação do admin nunca usa o IP do pedido para achar o guest", async () => {
+    await grantGuestAccess(
+      { ...request, authMethod: "admin", adminGrant: { minutes: 60 }, ipAddress: "10.0.0.5" },
+      baseSettings,
+      dict,
+    );
+    expect(authorizeGuest.mock.calls[0][0]).not.toHaveProperty("clientIp");
+    expect(authorizeGuest.mock.calls[0][0]).not.toHaveProperty("allowIpMatch");
   });
 
   it("payload recusado → mensagem de falha de autorização", async () => {

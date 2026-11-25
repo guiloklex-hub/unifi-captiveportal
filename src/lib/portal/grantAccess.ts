@@ -187,8 +187,29 @@ export async function grantGuestAccess(
   }
 
   // ── UniFi ────────────────────────────────────────────────────────────────
+  // O MAC da URL pode estar velho (página do portal aberta enquanto o Android
+  // trocava o MAC aleatório). Com o IP de quem pediu, a UniFi libera o guest
+  // conectado nesse IP — desde que esse MAC também passe nas regras de bloqueio.
+  // Nunca na liberação do admin: lá o IP do pedido é o do admin, não o do guest.
+  const clientIp = req.adminGrant ? null : (req.ipAddress ?? null);
+  const ipFallback = clientIp
+    ? {
+        clientIp,
+        allowIpMatch: async (candidate: string) => {
+          // CPF/e-mail/documento já passaram acima; só o MAC mudou.
+          const rule = await findBlockingRule({ mac: candidate });
+          if (rule) log.info({ candidate, ruleId: rule.id }, "Guest found by IP is blocked by access rule");
+          return !rule;
+        },
+      }
+    : {};
+  let grantedMac = mac;
   try {
-    await authorizeGuest({ mac, minutes, downKbps, upKbps, bytesQuotaMB, apMac: req.apMac, site });
+    const granted = await authorizeGuest({ mac, minutes, downKbps, upKbps, bytesQuotaMB, apMac: req.apMac, site, ...ipFallback });
+    if (granted.mac !== mac) {
+      log.warn({ grantedMac: granted.mac }, "Portal MAC not connected — authorized the guest with the same IP");
+      grantedMac = granted.mac;
+    }
   } catch (err) {
     if (tokenReserved && tokenId) {
       await releaseTokenUse(tokenId).catch((e) =>
@@ -218,7 +239,7 @@ export async function grantGuestAccess(
     cpf: id.cpf,
     documentType: id.documentType,
     document: id.document,
-    visitorKey: visitorKeyOf({ cpf: id.cpf, document: id.document, email: id.email, mac }),
+    visitorKey: visitorKeyOf({ cpf: id.cpf, document: id.document, email: id.email, mac: grantedMac }),
     authMethod,
     termsHash: req.consent?.termsHash ?? null,
     marketingConsent: req.consent?.marketing ?? false,
@@ -238,8 +259,8 @@ export async function grantGuestAccess(
   let record: { id: number; authorizedAt: Date };
   try {
     record = await prisma.guestRegistration.upsert({
-      where: { macAddress_authDate: { macAddress: mac, authDate } },
-      create: { ...data, macAddress: mac, authDate },
+      where: { macAddress_authDate: { macAddress: grantedMac, authDate } },
+      create: { ...data, macAddress: grantedMac, authDate },
       update: { ...data, authorizedAt: new Date(), revokedAt: null },
       select: { id: true, authorizedAt: true },
     });
@@ -255,7 +276,7 @@ export async function grantGuestAccess(
       data: {
         registrationId: record.id,
         authorizedAt: new Date(record.authorizedAt ?? Date.now()).toISOString(),
-        mac,
+        mac: grantedMac,
         ip: req.ipAddress ?? null,
         site,
         ssid: req.ssid,

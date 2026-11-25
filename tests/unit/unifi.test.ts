@@ -94,7 +94,7 @@ describe("UniFi OS com API Key (API oficial)", () => {
 
   it("autoriza pela Integration API sem nenhum login", async () => {
     await setup(opts, { UNIFI_API_KEY: "chave" });
-    await unifi.authorizeGuest(guestParams);
+    expect(await unifi.authorizeGuest(guestParams)).toEqual({ mac: "aa:bb:cc:dd:ee:ff", matchedBy: "mac" });
 
     expect(mock.callsTo("/api/auth/login")).toHaveLength(0);
     const action = mock.callsTo(`/v1/sites/${MOCK_SITE_ID}/clients/${MOCK_CLIENT_ID}/actions`)[0];
@@ -139,6 +139,41 @@ describe("UniFi OS com API Key (API oficial)", () => {
     await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "0" });
     mock.hideClientsForCalls = 100;
     await expect(unifi.authorizeGuest(guestParams)).rejects.toBeInstanceOf(unifi.UniFiClientNotFoundError);
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+  });
+
+  it("MAC velho na URL: libera na hora o guest conectado com o IP do pedido", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "5000" });
+    const started = Date.now();
+    const res = await unifi.authorizeGuest({ ...guestParams, mac: "f2:bd:c9:01:c1:dd", clientIp: "10.0.0.10" });
+    expect(res).toEqual({ mac: "aa:bb:cc:dd:ee:ff", matchedBy: "ip" });
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(mock.callsTo(`/clients/${MOCK_CLIENT_ID}/actions`)).toHaveLength(1);
+  });
+
+  it("o MAC informado tem precedência sobre o IP", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave" });
+    mock.guests.push({ mac: "aa:bb:cc:dd:ee:01", ip: "10.0.0.11", tx_bytes: 0, rx_bytes: 0, authorized: false });
+    const res = await unifi.authorizeGuest({ ...guestParams, clientIp: "10.0.0.11" });
+    expect(res).toEqual({ mac: "aa:bb:cc:dd:ee:ff", matchedBy: "mac" });
+  });
+
+  it("o IP nunca libera um cliente que não é guest", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "0" });
+    mock.guests[0].accessType = "DEFAULT";
+    await expect(
+      unifi.authorizeGuest({ ...guestParams, mac: "f2:bd:c9:01:c1:dd", clientIp: "10.0.0.10" }),
+    ).rejects.toThrow(/nem há guest com o IP 10\.0\.0\.10/);
+    expect(mock.callsTo("/actions")).toHaveLength(0);
+  });
+
+  it("guest achado pelo IP e recusado pelas regras do portal não é liberado", async () => {
+    await setup(opts, { UNIFI_API_KEY: "chave", UNIFI_CLIENT_WAIT_MS: "0" });
+    const allowIpMatch = vi.fn().mockResolvedValue(false);
+    await expect(
+      unifi.authorizeGuest({ ...guestParams, mac: "f2:bd:c9:01:c1:dd", clientIp: "10.0.0.10", allowIpMatch }),
+    ).rejects.toBeInstanceOf(unifi.UniFiClientNotFoundError);
+    expect(allowIpMatch).toHaveBeenCalledWith("aa:bb:cc:dd:ee:ff");
     expect(mock.callsTo("/actions")).toHaveLength(0);
   });
 
